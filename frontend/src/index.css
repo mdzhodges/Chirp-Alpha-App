@@ -1,0 +1,14 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Space+Grotesk:wght@500;700&display=swap');
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background-color: #09090b;
+  color: #ffffff;
+  /* Use Inter for general UI/Body text */
+  font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
