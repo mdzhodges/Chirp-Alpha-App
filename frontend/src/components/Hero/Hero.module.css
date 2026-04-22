@@ -1,0 +1,33 @@
+.section {
+  padding: 160px 20px;
+  text-align: center;
+  /* Adding a subtle grid pattern background is a huge "pro" move */
+  background-image: 
+    radial-gradient(circle at top, rgba(16, 185, 129, 0.05) 0%, transparent 50%),
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 100% 100%, 40px 40px, 40px 40px;
+}
+
+.title {
+  /* Use the unique font here */
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 5rem;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+  margin-bottom: 24px;
+  
+  /* Masking technique for a sharp silver-to-white gradient */
+  background: linear-gradient(180deg, #FFFFFF 0%, #A1A1AA 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.subtitle {
+  font-size: 1.25rem;
+  color: #71717a;
+  max-width: 550px;
+  margin: 0 auto 48px;
+  line-height: 1.6;
+}
