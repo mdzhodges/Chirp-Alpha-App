@@ -2,13 +2,29 @@
 
 :root {
   color-scheme: dark;
+
+  /* Color Palette */
+  --bg-main: #09090b;
+  --bg-secondary: #18181b;
+  --text-main: #ffffff;
+  --text-muted: #a1a1aa;
+  --accent-green: #10b981;
+  --accent-green-dark: #064e3b;
+
+  /* Typography */
+  --font-body: 'Inter', sans-serif;
+  --font-heading: 'Space Grotesk', sans-serif;
 }
 
 body {
   margin: 0;
-  background-color: #09090b;
-  color: #ffffff;
-  /* Use Inter for general UI/Body text */
-  font-family: 'Inter', sans-serif;
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
 }

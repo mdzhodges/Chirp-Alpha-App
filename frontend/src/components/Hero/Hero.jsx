@@ -1,5 +1,6 @@
+import { Link } from 'react-router-dom';
 import styles from './Hero.module.css';
-import Button from '../Button/Button.jsx';
+import Button from '../Button/Button';
 
 export default function Hero() {
   return (
@@ -8,7 +9,9 @@ export default function Hero() {
       <p className={styles.subtitle}>
         Institutional-grade stock momentum tracking for the modern trader.
       </p>
-      <Button text="Start Tracking" to="/dashboard" /> 
+      <Link to="/dashboard">
+        <Button text="Start Tracking" /> 
+      </Link>
     </section>
   );
 }
