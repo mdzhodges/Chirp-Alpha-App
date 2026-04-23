@@ -1,0 +1,12 @@
+# Required
+key_name         = "YOUR_EC2_KEYPAIR_NAME"
+# ssh_ingress_cidr = "YOUR_PUBLIC_IP/32" # Optional override; by default we auto-detect your current public IP /32.
+
+# Recommended
+region        = "us-east-1"
+instance_type = "g5.2xlarge"
+# aws_profile = "your-profile"
+
+# Storage (GiB)
+root_volume_size = 200
+data_volume_size = 200

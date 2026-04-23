@@ -3,3 +3,10 @@ data/
 __pycache__
 
 .env
+
+*.pem
+
+*lock.hcl
+*.terraform
+*.codex
+

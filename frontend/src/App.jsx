@@ -2,7 +2,7 @@ import { Routes, Route } from 'react-router-dom';
 import LandingPage from "./pages/LandingPage";
 import Dashboard from './pages/Dashboard';
 import Resources from './pages/Resources';
-import About from './pages/About';
+import About from './pages/AboutPage/About';
 import NavBar from './components/NavBar/NavBar';
 
 export default function App() {

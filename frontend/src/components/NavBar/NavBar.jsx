@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import styles from './Navbar.module.css';
+import styles from './NavBar.module.css';
 import logo from '../../assets/chirp_logo_no_bg.png';
 
 export default function Navbar() {
