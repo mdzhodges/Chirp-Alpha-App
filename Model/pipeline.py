@@ -3,8 +3,9 @@ import torch
 import dotenv
 import pandas as pd
 import numpy as np
-from ort Trainer
-from idate import validate
+import pyarrow.parquet as pq
+from architecture.trainer import Trainer
+from eval.validate import validate
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import TimeSeriesSplit
 import matplotlib.pyplot as plt
@@ -62,18 +63,43 @@ def _align_tweet_embeddings(df: pd.DataFrame, embeddings: torch.Tensor, counts: 
     return aligned, aligned_counts
 
 
+def _read_parquet_tail(path: str, sample_size: int) -> pd.DataFrame:
+    if sample_size <= 0:
+        raise ValueError("SAMPLE_SIZE must be greater than 0.")
+
+    parquet_file = pq.ParquetFile(path)
+    total_row_groups = parquet_file.num_row_groups
+    if total_row_groups == 0:
+        return pd.DataFrame()
+
+    selected_groups = []
+    rows_accumulated = 0
+
+    for rg_idx in range(total_row_groups - 1, -1, -1):
+        rg_rows = parquet_file.metadata.row_group(rg_idx).num_rows
+        selected_groups.append(rg_idx)
+        rows_accumulated += rg_rows
+        if rows_accumulated >= sample_size:
+            break
+
+    selected_groups.sort()
+    table = parquet_file.read_row_groups(selected_groups)
+    data = table.to_pandas()
+    return data.tail(sample_size).reset_index(drop=True)
+
+
 def _get_data():
     parquet_path = "data/data.parquet"
     jsonl_path = "data/data.jsonl"
 
     if os.path.exists(parquet_path):
-        data = pd.read_parquet(parquet_path)
+        data = _read_parquet_tail(parquet_path, SAMPLE_SIZE)
     else:
-        data = pd.read_json(jsonl_path, lines=True)
-    data = data.sort_values("Date").reset_index(drop=True)
-    return data[-SAMPLE_SIZE:].reset_index(drop=True)
+        data = pd.read_json(jsonl_path, lines=True).tail(SAMPLE_SIZE).reset_index(drop=True)
+    data = data.sort_values("Date").tail(SAMPLE_SIZE).reset_index(drop=True)
+    return data
 
-    return df
+
 def _process_tensors(table, scaler=None):
     df = pd.DataFrame(list(table))
 

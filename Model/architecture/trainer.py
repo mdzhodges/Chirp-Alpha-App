@@ -1,13 +1,13 @@
-from der import Encoder
-from k_nn import StockNetwork
-from x_nn import IndexNetwork
-from l_output import OutputNN
+from architecture.models.encoder import Encoder
+from architecture.models.stock_nn import StockNetwork
+from architecture.models.index_nn import IndexNetwork
+from architecture.models.final_output import OutputNN
 import matplotlib.pyplot as plt
 import pandas as pd
 import torch
 from tqdm import tqdm
 import torch.nn.functional as F
-from .validate import validate
+from eval.validate import validate
 import numpy as np
 import os
 from typing import Optional
