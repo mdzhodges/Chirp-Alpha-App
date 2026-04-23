@@ -1,7 +1,7 @@
 import { Routes, Route } from 'react-router-dom';
-import LandingPage from "./pages/LandingPage";
-import Dashboard from './pages/Dashboard';
-import Resources from './pages/Resources';
+import LandingPage from "./pages/LandingPage/LandingPage";
+import Dashboard from './pages/Dashboard/Dashboard';
+import Resources from './pages/Resources/Resources';
 import About from './pages/AboutPage/About';
 import NavBar from './components/NavBar/NavBar';
 import SignupPage from './pages/SignupPage/SignupPage';
