@@ -18,8 +18,8 @@ export default function Navbar() {
       </div>
 
       <div className={styles.actions}>
-        <Link to="#" className={styles.login}>Log in</Link>
-        <Link to="#" className={styles.signupBtn}>Sign up</Link>
+        <Link to="AuthPage" className={styles.login}>Log in</Link>
+        <Link to="SignupPage" className={styles.signupBtn}>Sign up</Link>
       </div>
     </nav>
   );

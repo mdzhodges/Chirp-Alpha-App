@@ -1,0 +1,48 @@
+.container.container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  width: 100vw;
+  /* Use the exact hex to be 100% sure */
+  background-color: #09090b !important; 
+  margin: 0;
+  position: fixed;
+  top: 0;
+  left: 0;
+}
+
+.wrapper {
+  width: 100%;
+  max-width: 400px;
+  text-align: center;
+  z-index: 10;
+}
+
+.heading {
+  font-family: var(--font-heading);
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.05em;
+  margin-bottom: 2rem;
+}
+
+/* This targets the Amplify component inside your module */
+.wrapper :global([data-amplify-authenticator]) {
+  background-color: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+.footer {
+  margin-top: 1.5rem;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.link {
+  color: var(--accent-green);
+  font-weight: 500;
+  cursor: pointer;
+}
