@@ -1,7 +1,5 @@
 data/
-
 __pycache__
-
 .env
 
 *.pem
@@ -10,3 +8,8 @@ __pycache__
 *.terraform
 *.codex
 
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl
