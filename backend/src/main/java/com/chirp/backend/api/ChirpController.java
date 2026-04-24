@@ -33,4 +33,3 @@ public class ChirpController {
     return chirpService.create(request);
   }
 }
-
