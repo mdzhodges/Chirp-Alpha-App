@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
+import styles from './Dashboard.module.css';
 
 export default function Dashboard() {
   const [symbol, setSymbol] = useState('AAPL');
   const [querySymbol, setQuerySymbol] = useState('AAPL');
-  const [status, setStatus] = useState('idle'); // idle | loading | success | error
+  const [status, setStatus] = useState('idle');
   const [error, setError] = useState(null);
   const [ticker, setTicker] = useState(null);
+
+  const momentumNumber = 1;
+  const momentumDirection = momentumNumber > 0.1 ? 'up' : momentumNumber < -0.1 ? 'down' : 'neutral';
 
   const currencyCode = useMemo(() => {
     const value = ticker?.currency ?? '';
@@ -78,110 +82,129 @@ export default function Dashboard() {
   }, [querySymbol]);
 
   return (
-    <div style={{ padding: '40px' }}>
-      <h1>Dashboard</h1>
-      <p>Real-time data will appear here.</p>
-
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          setQuerySymbol(symbol);
-        }}
-        style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '20px' }}
-      >
-        <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <span style={{ fontSize: '12px', opacity: 0.8 }}>Ticker symbol</span>
-          <input
-            value={symbol}
-            onChange={(e) => setSymbol(e.target.value)}
-            placeholder="AAPL"
-            autoCapitalize="characters"
-            autoCorrect="off"
-            spellCheck={false}
-            style={{ padding: '10px 12px', minWidth: '240px' }}
-          />
-        </label>
-        <button type="submit" style={{ padding: '10px 12px' }} disabled={status === 'loading'}>
-          {status === 'loading' ? 'Loading…' : 'Fetch'}
-        </button>
-      </form>
-
-      {status === 'error' && (
-        <div style={{ marginTop: '16px', color: '#b00020' }}>
-          <strong>Failed to load ticker:</strong> {error}
+    <div className={styles.page}>
+      <div className={styles.container}>
+        <div className={styles.header}>
+          <div className={styles.badge}>Dashboard</div>
+          <h1 className={styles.title}>Momentum Analysis</h1>
         </div>
-      )}
 
-      {ticker && (
-        <div
-          style={{
-            marginTop: '20px',
-            border: '1px solid rgba(0,0,0,0.12)',
-            borderRadius: '12px',
-            padding: '16px',
-            maxWidth: '720px',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
-            <div>
-              <div style={{ fontSize: '18px', fontWeight: 700 }}>
-                {ticker.symbol} {ticker.name ? `— ${ticker.name}` : ''}
-              </div>
-              <div style={{ fontSize: '12px', opacity: 0.75 }}>
-                {ticker.exchange ? `${ticker.exchange} · ` : ''}
-                {ticker.currency || 'USD'}
-                {ticker.fetchedAt ? ` · fetched ${new Date(ticker.fetchedAt).toLocaleString()}` : ''}
-              </div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '22px', fontWeight: 800 }}>
-                {ticker.price == null ? '—' : currencyFormat.format(Number(ticker.price))}
-              </div>
-              <div style={{ fontSize: '12px', opacity: 0.85 }}>
-                {ticker.change == null ? '—' : numberFormat.format(Number(ticker.change))}{' '}
-                {ticker.changePercent == null
-                  ? ''
-                  : `(${numberFormat.format(Number(ticker.changePercent))}%)`}
-              </div>
-            </div>
-          </div>
-
+        <div className={styles.momentumCard}>
+          <div className={styles.momentumLabel}>Predicted Momentum Score</div>
           <div
-            style={{
-              marginTop: '14px',
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-              gap: '10px 16px',
-              fontSize: '13px',
-            }}
+            className={`${styles.momentumValue} ${
+              momentumDirection === 'up'
+                ? styles.momentumValueUp
+                : momentumDirection === 'down'
+                ? styles.momentumValueDown
+                : styles.momentumValueNeutral
+            }`}
           >
-            <div>
-              <div style={{ opacity: 0.7 }}>Open</div>
-              <div>{ticker.open == null ? '—' : currencyFormat.format(Number(ticker.open))}</div>
-            </div>
-            <div>
-              <div style={{ opacity: 0.7 }}>Prev close</div>
+            {momentumNumber.toFixed(2)}
+          </div>
+          <span
+            className={`${styles.momentumDirection} ${
+              momentumDirection === 'up'
+                ? styles.momentumDirectionUp
+                : momentumDirection === 'down'
+                ? styles.momentumDirectionDown
+                : styles.momentumDirectionNeutral
+            }`}
+          >
+            {momentumDirection === 'up' ? 'Bullish' : momentumDirection === 'down' ? 'Bearish' : 'Neutral'}
+          </span>
+        </div>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            setQuerySymbol(symbol);
+          }}
+          className={styles.form}
+        >
+          <div className={styles.inputGroup}>
+            <span className={styles.inputLabel}>Ticker Symbol</span>
+            <input
+              className={styles.input}
+              value={symbol}
+              onChange={(e) => setSymbol(e.target.value)}
+              placeholder="AAPL"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+            />
+          </div>
+          <button type="submit" className={styles.button} disabled={status === 'loading'}>
+            {status === 'loading' ? 'Loading…' : 'Fetch'}
+          </button>
+        </form>
+
+        {status === 'error' && (
+          <div className={styles.error}>
+            <strong>Failed to load ticker:</strong> {error}
+          </div>
+        )}
+
+        {ticker && (
+          <div className={styles.tickerCard}>
+            <div className={styles.tickerHeader}>
               <div>
-                {ticker.previousClose == null ? '—' : currencyFormat.format(Number(ticker.previousClose))}
+                <div className={styles.tickerSymbol}>{ticker.symbol}</div>
+                <div className={styles.tickerName}>{ticker.name || ''}</div>
+                <div className={styles.tickerMeta}>
+                  {ticker.exchange ? `${ticker.exchange} · ` : ''}
+                  {ticker.currency || 'USD'}
+                  {ticker.fetchedAt ? ` · fetched ${new Date(ticker.fetchedAt).toLocaleString()}` : ''}
+                </div>
+              </div>
+              <div>
+                <div className={styles.tickerPrice}>
+                  {ticker.price == null ? '—' : currencyFormat.format(Number(ticker.price))}
+                </div>
+                <div
+                  className={`${styles.tickerChange} ${
+                    Number(ticker.change) >= 0 ? styles.tickerChangePositive : styles.tickerChangeNegative
+                  }`}
+                >
+                  {ticker.change == null ? '—' : numberFormat.format(Number(ticker.change))}
+                  {ticker.changePercent == null
+                    ? ''
+                    : ` (${numberFormat.format(Number(ticker.changePercent))}%)`}
+                </div>
               </div>
             </div>
-            <div>
-              <div style={{ opacity: 0.7 }}>Day range</div>
-              <div>
-                {ticker.dayLow == null || ticker.dayHigh == null
-                  ? '—'
-                  : `${currencyFormat.format(Number(ticker.dayLow))} – ${currencyFormat.format(
-                      Number(ticker.dayHigh)
-                    )}`}
+
+            <div className={styles.statsGrid}>
+              <div className={styles.statItem}>
+                <div className={styles.statLabel}>Open</div>
+                <div className={styles.statValue}>
+                  {ticker.open == null ? '—' : currencyFormat.format(Number(ticker.open))}
+                </div>
               </div>
-            </div>
-            <div>
-              <div style={{ opacity: 0.7 }}>Volume</div>
-              <div>{ticker.volume == null ? '—' : numberFormat.format(Number(ticker.volume))}</div>
+              <div className={styles.statItem}>
+                <div className={styles.statLabel}>Prev Close</div>
+                <div className={styles.statValue}>
+                  {ticker.previousClose == null ? '—' : currencyFormat.format(Number(ticker.previousClose))}
+                </div>
+              </div>
+              <div className={styles.statItem}>
+                <div className={styles.statLabel}>Day Range</div>
+                <div className={styles.statValue}>
+                  {ticker.dayLow == null || ticker.dayHigh == null
+                    ? '—'
+                    : `${currencyFormat.format(Number(ticker.dayLow))} – ${currencyFormat.format(Number(ticker.dayHigh))}`}
+                </div>
+              </div>
+              <div className={styles.statItem}>
+                <div className={styles.statLabel}>Volume</div>
+                <div className={styles.statValue}>
+                  {ticker.volume == null ? '—' : numberFormat.format(Number(ticker.volume))}
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

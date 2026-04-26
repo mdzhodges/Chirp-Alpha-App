@@ -11,6 +11,8 @@ from eval.validate import validate
 import numpy as np
 import os
 from typing import Optional
+import boto3
+from datetime import datetime
 
 
 class Trainer:
@@ -361,4 +363,47 @@ class Trainer:
         
         csv_path = f'graphs/{self.learning_rate}_{self.dropout}_{self.l1_lambda}/metrics_{self.learning_rate}_{self.dropout}_{self.l1_lambda}.csv'
         df.to_csv(csv_path, index=False)
+        
+        graph_dir = f'graphs/{self.learning_rate}_{self.dropout}_{self.l1_lambda}'
+        for graph_file in ['training_vs_val_error.png', 'training_loss_per_epoch.png', 'r^2_per_epoch.png']:
+            graph_path = f'{graph_dir}/{graph_file}'
+            if os.path.exists(graph_path):
+                self._upload_to_s3(graph_path)
+        
+        model_path = f'graphs/{self.learning_rate}_{self.dropout}_{self.l1_lambda}/model_weights.pt'
+        torch.save({
+            'encoder': self.encoder.state_dict() if self.encoder is not None else None,
+            'stock_network': self.stock_network.state_dict(),
+            'index_network': self.index_network.state_dict(),
+            'output_network': self.output_network.state_dict(),
+            'hyperparameters': {
+                'learning_rate': self.learning_rate,
+                'dropout': self.dropout,
+                'l1_lambda': self.l1_lambda,
+            },
+            'metrics': {
+                'best_val_huber': self.best_val_mean_squared_val,
+                'best_val_l1': self.best_l1,
+                'best_val_r2': self.best_r2,
+            }
+        }, model_path)
+        
+        self._upload_to_s3(model_path)
+        self._upload_to_s3(csv_path)
+    
+    def _upload_to_s3(self, local_path: str):
+        import dotenv
+        dotenv.load_dotenv()
+        s3_bucket = os.getenv("S3_BUCKET", "")
+        if not s3_bucket:
+            return
+        s3_prefix = os.getenv("S3_PREFIX", "training-results")
+        aws_region = os.getenv("AWS_REGION", "us-east-1")
+        s3_key = f"{s3_prefix}/{datetime.now().strftime('%Y%m%d-%H%M%S')}/{local_path}"
+        try:
+            s3_client = boto3.client("s3", region_name=aws_region)
+            s3_client.upload_file(local_path, s3_bucket, s3_key)
+            print(f"Uploaded {local_path} to s3://{s3_bucket}/{s3_key}")
+        except Exception as e:
+            print(f"Failed to upload {local_path} to S3: {e}")
         

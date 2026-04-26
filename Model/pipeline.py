@@ -11,6 +11,10 @@ from sklearn.model_selection import TimeSeriesSplit
 import matplotlib.pyplot as plt
 import seaborn as sns
 import gc
+from concurrent.futures import ProcessPoolExecutor
+import boto3
+from datetime import datetime
+import json
 
 
 dotenv.load_dotenv()
@@ -19,8 +23,167 @@ NUM_EPOCHS = int(os.getenv("NUM_EPOCHS", 5))
 SAMPLE_SIZE = int(os.getenv("SAMPLE_SIZE", 1000))
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 TWEET_EMBEDDINGS_PATH = os.getenv("TWEET_EMBEDDINGS_PATH", "data/fintwitbert_tweet_embeddings.pt")
+DATA_PATH = os.getenv("DATA_PATH", "/home/ubuntu/training/data")
+DATA_FORMAT = os.getenv("DATA_FORMAT", "parquet")  # "parquet" or "jsonl"
+EMBEDDINGS_FULL_PATH = os.path.join(DATA_PATH, "fintwitbert_tweet_embeddings.pt") if not os.path.isabs(TWEET_EMBEDDINGS_PATH) else TWEET_EMBEDDINGS_PATH
+
+S3_BUCKET = os.getenv("S3_BUCKET", "")
+S3_PREFIX = os.getenv("S3_PREFIX", "training-results")
+AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 
 _TWEET_EMBED_CACHE = {}
+
+
+def get_data_date_range():
+    """Return (first_date, last_date) from the data - auto-discovers."""
+    data = _get_data()
+    dates = pd.to_datetime(data['Date'], errors='coerce').dropna()
+    return str(dates.min().date()), str(dates.max().date())
+
+
+def print_data_info():
+    """Print info about the dataset: date range, num rows, tickers, etc."""
+    data = _get_data()
+    first, last = get_data_date_range()
+    tickers = data['ticker'].unique() if 'ticker' in data.columns else []
+    num_tweets = sum(len(row.get('tweets', [])) for _, row in data.iterrows())
+    
+    print(f"=== Dataset Info ===")
+    print(f"Date range: {first} to {last}")
+    print(f"Total rows: {len(data):,}")
+    print(f"Unique tickers: {len(tickers)}")
+    print(f"Total tweets/articles: {num_tweets:,}")
+    print(f"Data format: {DATA_FORMAT}")
+    print(f"Data path: {DATA_PATH}")
+
+
+def get_index_data():
+    """Extract market index data (SPY, QQQ, DIA, VIX) as separate dict keyed by date."""
+    data = _get_data()
+    result = {}
+    for _, row in data.iterrows():
+        spy_data = row.get('spy', {})
+        if spy_data:
+            result[row['Date']] = spy_data
+    return result
+
+
+def get_stock_date_range():
+    """Infer min/max date from stock CSV files."""
+    import glob
+    stock_dir = f"{DATA_PATH}/stock_data"
+    if not os.path.exists(stock_dir):
+        return None, None
+    
+    files = glob.glob(f"{stock_dir}/*.csv")
+    if not files:
+        return None, None
+    
+    min_date, max_date = None, None
+    for path in files:
+        try:
+            df = pd.read_csv(path, usecols=['date'])
+            if df.empty:
+                continue
+            dt = pd.to_datetime(df.get('date', df.get('Date')), errors='coerce').dropna()
+            if dt.empty:
+                continue
+            lo, hi = dt.min().date(), dt.max().date()
+            min_date = lo if min_date is None else min(min_date, lo)
+            max_date = hi if max_date is None else max(max_date, hi)
+        except Exception:
+            continue
+    
+    return str(min_date) if min_date else None, str(max_date) if max_date else None
+
+
+def download_index_data():
+    """Download SPY/QQQ/DIA/VIX market indices matching stock date range."""
+    import yfinance as yf
+    tickers = ['SPY', 'QQQ', 'DIA', '^VIX']
+    start_date, end_date = get_stock_date_range()
+    if not start_date or not end_date:
+        print("No stock date range found - run stock_clean.py first")
+        return
+    
+    output_path = f"{DATA_PATH}/market_indices.jsonl"
+    end_exclusive = (pd.to_datetime(end_date) + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+    
+    print(f"Downloading {tickers} from {start_date} to {end_date}...")
+    data = yf.download(tickers, start=start_date, end=end_exclusive, auto_adjust=False)
+    data.columns = [f'{t}_{p}' for p, t in data.columns]
+    df = data.reset_index()
+    df['Date'] = pd.to_datetime(df['Date']).dt.strftime('%Y-%m-%d')
+    df.to_json(output_path, orient='records', lines=True)
+    print(f"Market data saved to {output_path} ({len(df):,} rows)")
+
+
+def run_preprocessing():
+    """Run full preprocessing pipeline: stock_clean -> tweet_clean -> combined_jsonl."""
+    import subprocess
+    
+    # Model directory is parent of DATA_PATH
+    model_dir = os.path.dirname(DATA_PATH.rstrip('/'))
+    
+    print("=== Running Preprocessing ===")
+    
+    # 1. Get stock date range
+    start_date, end_date = get_stock_date_range()
+    print(f"Stock date range: {start_date} to {end_date}")
+    
+    # 2. Download index data
+    download_index_data()
+    
+    # 3. Run stock_clean.py
+    print("\n--- Running stock_clean.py ---")
+    result = subprocess.run(
+        ['poetry', 'run', 'python', '-c', 
+         'import sys; sys.path.insert(0, "."); '
+         'from preprocessing.data_cleaning.stock_clean import create_data, create_features; '
+         'create_data(); create_features()'],
+        capture_output=True, text=True, cwd=model_dir
+    )
+    if result.returncode != 0:
+        print(f"stock_clean error: {result.stderr}")
+    else:
+        print("stock_clean.py done")
+    
+    # 4. Check for news data
+    news_csv = f"{DATA_PATH}/news_data.csv"
+    if os.path.exists(news_csv):
+        print("news_data.csv detected - combined_jsonl.py will handle it")
+    else:
+        print(f"No news CSV found at {news_csv}, skipping")
+    
+    # 5. Run combined_jsonl.py
+    print("\n--- Running combined_jsonl.py ---")
+    result = subprocess.run(
+        ['poetry', 'run', 'python', '-c', 
+         'import sys; sys.path.insert(0, "."); '
+         'from preprocessing.combined_jsonl import main; main()'],
+        capture_output=True, text=True, cwd=model_dir
+    )
+    if result.returncode != 0:
+        print(f"combined_jsonl error: {result.stderr}")
+    else:
+        print("combined_jsonl.py done - data.parquet created")
+    
+    print("\n=== Preprocessing Complete ===")
+    print_data_info()
+
+
+def _upload_to_s3(local_path: str, s3_key: str = None):
+    if not S3_BUCKET:
+        return
+    if s3_key is None:
+        s3_key = local_path
+    s3_key = f"{S3_PREFIX}/{datetime.now().strftime('%Y%m%d-%H%M%S')}/{s3_key}"
+    try:
+        s3_client = boto3.client("s3", region_name=AWS_REGION)
+        s3_client.upload_file(local_path, S3_BUCKET, s3_key)
+        print(f"Uploaded {local_path} to s3://{S3_BUCKET}/{s3_key}")
+    except Exception as e:
+        print(f"Failed to upload {local_path} to S3: {e}")
 
 
 def _load_tweet_embedding_index(path: str):
@@ -89,12 +252,14 @@ def _read_parquet_tail(path: str, sample_size: int) -> pd.DataFrame:
 
 
 def _get_data():
-    parquet_path = "data/data.parquet"
-    jsonl_path = "data/data.jsonl"
-
-    if os.path.exists(parquet_path):
-        data = _read_parquet_tail(parquet_path, SAMPLE_SIZE)
+    if DATA_FORMAT == "parquet":
+        parquet_path = f"{DATA_PATH}/data.parquet"
+        if os.path.exists(parquet_path):
+            data = _read_parquet_tail(parquet_path, SAMPLE_SIZE)
+        else:
+            raise FileNotFoundError(f"Parquet not found: {parquet_path}")
     else:
+        jsonl_path = f"{DATA_PATH}/data.jsonl"
         data = pd.read_json(jsonl_path, lines=True).tail(SAMPLE_SIZE).reset_index(drop=True)
     data = data.sort_values("Date").tail(SAMPLE_SIZE).reset_index(drop=True)
     return data
@@ -130,7 +295,7 @@ def walkforward(lr:float, dropout:float, l1_lambda:float):
 
     all_results = []
 
-    tweet_index = _load_tweet_embedding_index(TWEET_EMBEDDINGS_PATH)
+    tweet_index = _load_tweet_embedding_index(EMBEDDINGS_FULL_PATH)
 
     for fold, (train_date_idx, test_date_idx) in enumerate(tscv.split(unique_dates)):
         print(f"\nWALKFORWARD FOLD {fold+1} Combo: LR={lr}, DR={dropout}, L1={l1_lambda}")
@@ -256,14 +421,20 @@ def main():
     summary_results = []
     
 
-    max_workers = 12
+    max_workers = int(os.getenv("MAX_WORKERS", 8))
     
     print(f"Parallelizing {len(combos)} experiments across {max_workers} workers...")
     
-    results_list = list(map(run_experiment, combos))
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        results_list = list(executor.map(run_experiment, combos))
     summary_results.extend(results_list)
 
     df = pd.DataFrame(summary_results)
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    results_csv = f"hyperparameter_results_{timestamp}.csv"
+    df.to_csv(results_csv, index=False)
+    _upload_to_s3(results_csv)
+    
     fig, axes = plt.subplots(4, 1, figsize=(40, 40)) 
     
     metrics = ['L1_Avg', 'Huber_Avg', 'R2_Avg', 'Accuracy_Avg']
@@ -275,8 +446,10 @@ def main():
         axes[i].tick_params(axis='x', rotation=90)
 
     plt.tight_layout()
-    plt.savefig("hyperparameter_analysis.png")
+    analysis_png = f"hyperparameter_analysis_{timestamp}.png"
+    plt.savefig(analysis_png)
     plt.close(fig)
+    _upload_to_s3(analysis_png)
     
     fig_last, axes_last = plt.subplots(4, 1, figsize=(40, 40))
     last_fold_metrics = [
@@ -292,9 +465,28 @@ def main():
             axes_last[i].tick_params(axis='x', rotation=90)
     
     plt.tight_layout()
-    plt.savefig("hyperparameter_last_fold_analysis.png")
+    last_fold_png = f"hyperparameter_last_fold_analysis_{timestamp}.png"
+    plt.savefig(last_fold_png)
     plt.close(fig_last)
+    _upload_to_s3(last_fold_png)
+    
+    print(f"Results saved to {results_csv} and uploaded to S3 bucket: {S3_BUCKET}")
     
 if __name__ == "__main__":
-    torch.multiprocessing.set_start_method('spawn', force=True)
-    main()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--preprocess-only', action='store_true', help='Run preprocessing only')
+    parser.add_argument('--train-only', action='store_true', help='Run training only')
+    args = parser.parse_args()
+    
+    if args.preprocess_only:
+        run_preprocessing()
+    elif args.train_only:
+        torch.multiprocessing.set_start_method('spawn', force=True)
+        main()
+    else:
+        # Default: run preprocessing first, then training
+        run_preprocessing()
+        print("\n" + "="*50 + "\n")
+        torch.multiprocessing.set_start_method('spawn', force=True)
+        main()

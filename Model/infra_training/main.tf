@@ -3,12 +3,6 @@ provider "aws" {
   profile = var.aws_profile
 }
 
-# --- New Quota Request Block ---
-resource "aws_servicequotas_service_quota" "vcpu_increase" {
-  quota_code   = "L-1216C47A" # For Standard On-Demand instances. Use L-3819A6DF for GPU (G/VT) instances.
-  service_code = "ec2"
-  value        = 8          # Set this to the total number of vCPUs you require
-}
 # -------------------------------
 
 data "http" "myip" {
@@ -170,7 +164,6 @@ resource "aws_instance" "trainer" {
   tags = merge(local.tags, { Name = "${var.project_name}-trainer" })
   
   # Ensure the instance waits for the quota increase to be processed
-  depends_on = [aws_servicequotas_service_quota.vcpu_increase]
 }
 
 resource "aws_ebs_volume" "data" {
@@ -191,4 +184,24 @@ resource "aws_volume_attachment" "data" {
   device_name = "/dev/sdf"
   volume_id   = aws_ebs_volume.data[0].id
   instance_id = aws_instance.trainer.id
+}
+
+resource "aws_s3_bucket" "training_results" {
+  bucket = "${var.project_name}-training-${var.region}"
+}
+
+resource "aws_s3_bucket_versioning" "training_results" {
+  bucket = aws_s3_bucket.training_results.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "training_results" {
+  bucket = aws_s3_bucket.training_results.id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
 }

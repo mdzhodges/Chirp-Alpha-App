@@ -10,7 +10,7 @@ def create_data():
     start_date = '2014-01-01'
     end_date = '2016-03-31'
     output_file = "data/combined_stock_data.jsonl"
-    path = "/home/matt/Git/Chirp-Alpha/data/price_raw"
+    path = "/home/matt/Git/Chirp-Alpha/data/stock_data"
 
     all_files = glob.glob(os.path.join(path, "*.csv"))
 
@@ -32,9 +32,20 @@ def create_data():
                 print(f"Error processing {filename}: {e}")
 
 def create_features():
-    input_file = "data/combined_stock_data.jsonl"
+    input_file = f"{DATA_DIR}/combined_stock_data.jsonl"
+    if not os.path.exists(input_file):
+        print(f"Combined stock data not found: {input_file}. Run create_data() first.")
+        return None
+    output_file = f"{DATA_DIR}/stock_data.jsonl"
+    
     df = pd.read_json(input_file, lines=True)
-    df.columns = [c.capitalize() if c.lower() in ['open', 'high', 'low', 'close', 'volume', 'date'] else c for c in df.columns]
+    # Rename columns properly
+    rename_cols = {}
+    for c in df.columns:
+        lower = c.lower()
+        if lower in ['open', 'high', 'low', 'close', 'volume', 'date']:
+            rename_cols[c] = lower.capitalize()
+    df = df.rename(columns=rename_cols)
     df['Date'] = pd.to_datetime(df['Date'])
     df = df.sort_values(by=['ticker', 'Date'])
     feature_dfs = []
@@ -110,8 +121,9 @@ def create_features():
 
     final_df = pd.concat(feature_dfs, ignore_index=True)
     final_df = final_df.dropna(subset=['SMA_50', 'momentum'])
-    output_file = "data/stock_data.jsonl"
+    output_file = f"{DATA_DIR}/stock_data.jsonl"
     final_df.to_json(output_file, orient='records', lines=True, date_format='iso')
+    print(f"Stock features saved to {output_file}")
     return final_df
 
 
@@ -127,9 +139,7 @@ def preprocess_to_tensor(df, device="cuda"):
     
     return scaler, torch.tensor(scaled_data, dtype=torch.float32).to(device)
 
-if __name__ == "__main__":
-    create_data()
-    final_df = create_features()
+if __name__ == "__main__":    final_df = create_features()
     device = "cuda" if torch.cuda.is_available() else "cpu"
     scaler, tensor = preprocess_to_tensor(final_df, device=device)
     print(f"Tensor Shape: {tensor.shape}")
