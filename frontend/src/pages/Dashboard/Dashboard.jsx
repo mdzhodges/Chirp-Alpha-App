@@ -1,5 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
+import { Line } from 'react-chartjs-2';
 import styles from './Dashboard.module.css';
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend
+);
 
 export default function Dashboard() {
   const [symbol, setSymbol] = useState('AAPL');
@@ -7,6 +28,7 @@ export default function Dashboard() {
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState(null);
   const [ticker, setTicker] = useState(null);
+  const [history, setHistory] = useState(null);
 
   const momentumNumber = 1;
   const momentumDirection = momentumNumber > 0.1 ? 'up' : momentumNumber < -0.1 ? 'down' : 'neutral';
@@ -50,6 +72,11 @@ export default function Dashboard() {
           { signal: controller.signal }
         );
 
+        const responseHistory = await fetch(
+          `/api/ticker/history?symbol=${encodeURIComponent(trimmed)}&range=1mo`,
+          { signal: controller.signal }
+        );
+
         if (!response.ok) {
           const contentType = response.headers.get('content-type') || '';
           if (contentType.includes('application/json')) {
@@ -68,6 +95,12 @@ export default function Dashboard() {
 
         const data = await response.json();
         setTicker(data);
+
+        if (responseHistory.ok) {
+          const dataHistory = await responseHistory.json();
+          setHistory(dataHistory);
+        }
+
         setStatus('success');
       } catch (err) {
         if (err?.name === 'AbortError') return;
@@ -201,6 +234,44 @@ export default function Dashboard() {
                   {ticker.volume == null ? '—' : numberFormat.format(Number(ticker.volume))}
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {history && history.histogram && (
+          <div className={styles.chartCard}>
+            <div className={styles.chartHeader}>Price History (1 Month)</div>
+            <div className={styles.chartContainer}>
+              <Line
+                data={{
+                  labels: history.histogram.map(item => item.time),
+                  datasets: [
+                    {
+                      label: 'Price',
+                      data: history.histogram.map(item => item.close),
+                      borderColor: 'rgb(75, 192, 192)',
+                      backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                      tension: 0.1,
+                    },
+                  ],
+                }}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: {
+                      display: false,
+                    },
+                  },
+                  scales: {
+                    x: {
+                      ticks: {
+                        maxTicksLimit: 10,
+                      },
+                    },
+                  },
+                }}
+              />
             </div>
           </div>
         )}

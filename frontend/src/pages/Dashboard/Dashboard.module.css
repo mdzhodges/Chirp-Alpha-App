@@ -272,3 +272,25 @@
   color: #ef4444;
   font-size: 0.875rem;
 }
+
+/* ---------- Chart ---------- */
+.chartCard {
+  margin-top: 24px;
+  padding: 24px;
+  border-radius: 12px;
+  background-color: var(--bg-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.chartHeader {
+  font-family: var(--font-heading);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-bottom: 16px;
+}
+
+.chartContainer {
+  height: 300px;
+  position: relative;
+}
