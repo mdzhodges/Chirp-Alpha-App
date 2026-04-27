@@ -294,3 +294,32 @@
   height: 300px;
   position: relative;
 }
+
+/* ---------- Split Screen ---------- */
+
+.splitScreenContainer {
+  display: flex;
+  height: 100vh;
+  width: 100%;
+  background-color: var(--bg-main);
+  overflow: hidden;
+}
+
+.leftColumn {
+  width: 50%;
+  height: 100%;
+  overflow-y: auto;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center; /* Centers your dashboard card */
+}
+
+.rightColumn {
+  width: 50%;
+  height: 100%;
+  overflow-y: auto;
+  border-left: 1px solid var(--bg-secondary);
+  background-color: var(--bg-main);
+  padding: 2rem;
+}
