@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useTickerData } from '../../hooks/UseTickerData';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -11,6 +12,8 @@ import {
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import styles from './Dashboard.module.css';
+import StockTwitsFeed from '../../components/StockTwitsFeed/StockTwitsFeed'
+import TickerCard from '../../components/TickerCard/TickerCard';
 
 ChartJS.register(
   CategoryScale,
@@ -25,94 +28,10 @@ ChartJS.register(
 export default function Dashboard() {
   const [symbol, setSymbol] = useState('AAPL');
   const [querySymbol, setQuerySymbol] = useState('AAPL');
-  const [status, setStatus] = useState('idle');
-  const [error, setError] = useState(null);
-  const [ticker, setTicker] = useState(null);
-  const [history, setHistory] = useState(null);
+  const { status, error, ticker, history } = useTickerData(querySymbol);
 
   const momentumNumber = 1;
   const momentumDirection = momentumNumber > 0.1 ? 'up' : momentumNumber < -0.1 ? 'down' : 'neutral';
-
-  const currencyCode = useMemo(() => {
-    const value = ticker?.currency ?? '';
-    return /^[A-Z]{3}$/.test(value) ? value : 'USD';
-  }, [ticker?.currency]);
-
-  const numberFormat = useMemo(
-    () =>
-      new Intl.NumberFormat(undefined, {
-        maximumFractionDigits: 4,
-      }),
-    []
-  );
-
-  const currencyFormat = useMemo(
-    () =>
-      new Intl.NumberFormat(undefined, {
-        style: 'currency',
-        currency: currencyCode,
-        maximumFractionDigits: 4,
-      }),
-    [currencyCode]
-  );
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    async function load() {
-      const trimmed = querySymbol.trim();
-      if (!trimmed) return;
-
-      setStatus('loading');
-      setError(null);
-
-      try {
-        const response = await fetch(
-          `/api/ticker?symbol=${encodeURIComponent(trimmed)}`,
-          { signal: controller.signal }
-        );
-
-        const responseHistory = await fetch(
-          `/api/ticker/history?symbol=${encodeURIComponent(trimmed)}&range=1mo`,
-          { signal: controller.signal }
-        );
-
-        if (!response.ok) {
-          const contentType = response.headers.get('content-type') || '';
-          if (contentType.includes('application/json')) {
-            const data = await response.json().catch(() => null);
-            const detail =
-              data?.detail ||
-              data?.message ||
-              (data?.error && data?.status ? `${data.error} (${data.status})` : null) ||
-              (typeof data === 'string' ? data : null);
-            throw new Error(detail || `Request failed (${response.status})`);
-          }
-
-          const text = await response.text().catch(() => '');
-          throw new Error(text || `Request failed (${response.status})`);
-        }
-
-        const data = await response.json();
-        setTicker(data);
-
-        if (responseHistory.ok) {
-          const dataHistory = await responseHistory.json();
-          setHistory(dataHistory);
-        }
-
-        setStatus('success');
-      } catch (err) {
-        if (err?.name === 'AbortError') return;
-        setTicker(null);
-        setStatus('error');
-        setError(err instanceof Error ? err.message : String(err));
-      }
-    }
-
-    load();
-    return () => controller.abort();
-  }, [querySymbol]);
 
   return (
     <div className={styles.page}>
@@ -178,65 +97,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {ticker && (
-          <div className={styles.tickerCard}>
-            <div className={styles.tickerHeader}>
-              <div>
-                <div className={styles.tickerSymbol}>{ticker.symbol}</div>
-                <div className={styles.tickerName}>{ticker.name || ''}</div>
-                <div className={styles.tickerMeta}>
-                  {ticker.exchange ? `${ticker.exchange} · ` : ''}
-                  {ticker.currency || 'USD'}
-                  {ticker.fetchedAt ? ` · fetched ${new Date(ticker.fetchedAt).toLocaleString()}` : ''}
-                </div>
-              </div>
-              <div>
-                <div className={styles.tickerPrice}>
-                  {ticker.price == null ? '—' : currencyFormat.format(Number(ticker.price))}
-                </div>
-                <div
-                  className={`${styles.tickerChange} ${
-                    Number(ticker.change) >= 0 ? styles.tickerChangePositive : styles.tickerChangeNegative
-                  }`}
-                >
-                  {ticker.change == null ? '—' : numberFormat.format(Number(ticker.change))}
-                  {ticker.changePercent == null
-                    ? ''
-                    : ` (${numberFormat.format(Number(ticker.changePercent))}%)`}
-                </div>
-              </div>
-            </div>
-
-            <div className={styles.statsGrid}>
-              <div className={styles.statItem}>
-                <div className={styles.statLabel}>Open</div>
-                <div className={styles.statValue}>
-                  {ticker.open == null ? '—' : currencyFormat.format(Number(ticker.open))}
-                </div>
-              </div>
-              <div className={styles.statItem}>
-                <div className={styles.statLabel}>Prev Close</div>
-                <div className={styles.statValue}>
-                  {ticker.previousClose == null ? '—' : currencyFormat.format(Number(ticker.previousClose))}
-                </div>
-              </div>
-              <div className={styles.statItem}>
-                <div className={styles.statLabel}>Day Range</div>
-                <div className={styles.statValue}>
-                  {ticker.dayLow == null || ticker.dayHigh == null
-                    ? '—'
-                    : `${currencyFormat.format(Number(ticker.dayLow))} – ${currencyFormat.format(Number(ticker.dayHigh))}`}
-                </div>
-              </div>
-              <div className={styles.statItem}>
-                <div className={styles.statLabel}>Volume</div>
-                <div className={styles.statValue}>
-                  {ticker.volume == null ? '—' : numberFormat.format(Number(ticker.volume))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {ticker && <TickerCard ticker={ticker} styles={styles} />}
 
         {history && history.histogram && (
           <div className={styles.chartCard}>
