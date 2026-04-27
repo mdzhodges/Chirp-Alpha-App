@@ -68,7 +68,7 @@ class Trainer:
         self.weight_down = total / (2 * num_down)
             
         
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = self._get_device()
         self.scaler = torch.amp.GradScaler(device="cuda", enabled=torch.cuda.is_available())
 
         self.best_model_state = None
@@ -406,4 +406,13 @@ class Trainer:
             print(f"Uploaded {local_path} to s3://{s3_bucket}/{s3_key}")
         except Exception as e:
             print(f"Failed to upload {local_path} to S3: {e}")
+
+    def _get_device(self) -> torch.device:
+        if torch.cuda.is_available():
+            return torch.device("cuda")
+
+        if torch.backends.mps.is_available():
+            return torch.device("mps")
+
+        return torch.device("cpu")
         
