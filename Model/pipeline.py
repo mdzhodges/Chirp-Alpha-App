@@ -119,54 +119,33 @@ def download_index_data():
 
 
 def run_preprocessing():
-    """Run full preprocessing pipeline: stock_clean -> tweet_clean -> combined_jsonl."""
-    import subprocess
-    
-    # Model directory is parent of DATA_PATH
-    model_dir = os.path.dirname(DATA_PATH.rstrip('/'))
-    
+    """Run preprocessing to build `data.parquet`/`data.jsonl` under `DATA_PATH`."""
+    import sys
+
     print("=== Running Preprocessing ===")
-    
-    # 1. Get stock date range
-    start_date, end_date = get_stock_date_range()
-    print(f"Stock date range: {start_date} to {end_date}")
-    
-    # 2. Download index data
-    download_index_data()
-    
-    # 3. Run stock_clean.py
-    print("\n--- Running stock_clean.py ---")
-    result = subprocess.run(
-        ['poetry', 'run', 'python', '-c', 
-         'import sys; sys.path.insert(0, "."); '
-         'from preprocessing.data_cleaning.stock_clean import create_data, create_features; '
-         'create_data(); create_features()'],
-        capture_output=True, text=True, cwd=model_dir
-    )
-    if result.returncode != 0:
-        print(f"stock_clean error: {result.stderr}")
-    else:
-        print("stock_clean.py done")
-    
-    # 4. Check for news data
+
+    # Check for required inputs
     news_csv = f"{DATA_PATH}/news_data.csv"
     if os.path.exists(news_csv):
         print("news_data.csv detected - combined_jsonl.py will handle it")
     else:
         print(f"No news CSV found at {news_csv}, skipping")
-    
-    # 5. Run combined_jsonl.py
-    print("\n--- Running combined_jsonl.py ---")
-    result = subprocess.run(
-        ['poetry', 'run', 'python', '-c', 
-         'import sys; sys.path.insert(0, "."); '
-         'from preprocessing.combined_jsonl import main; main()'],
-        capture_output=True, text=True, cwd=model_dir
-    )
-    if result.returncode != 0:
-        print(f"combined_jsonl error: {result.stderr}")
+
+    stock_dir = f"{DATA_PATH}/stock_data"
+    if os.path.exists(stock_dir):
+        print("stock_data/ detected - combined_jsonl.py will handle it")
     else:
-        print("combined_jsonl.py done - data.parquet created")
+        print(f"No stock_data/ folder found at {stock_dir}, skipping")
+    
+    # Run combined_jsonl.py (writes to DATA_PATH)
+    print("\n--- Running combined_jsonl.py ---")
+    os.environ.setdefault("PREPROCESS_START_DATE", "2010-01-01")
+    os.environ["DATA_PATH"] = DATA_PATH
+    sys.path.insert(0, os.path.dirname(__file__) or ".")
+    from preprocessing.combined_jsonl import main as _preprocess_main
+
+    _preprocess_main()
+    print("combined_jsonl.py done - data.parquet created")
     
     print("\n=== Preprocessing Complete ===")
     print_data_info()

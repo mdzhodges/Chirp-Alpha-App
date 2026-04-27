@@ -2,12 +2,50 @@ import json
 import os
 from pathlib import Path
 from typing import Any
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
 
 import numpy as np
 import pandas as pd
+
+_NUMBA_CACHE_DIR = Path(os.getenv("NUMBA_CACHE_DIR", "/tmp/numba_cache"))
+try:
+    _NUMBA_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
+os.environ.setdefault("NUMBA_CACHE_DIR", str(_NUMBA_CACHE_DIR))
+os.environ.setdefault("NUMBA_DISABLE_CACHING", "1")
 import pandas_ta as ta
 
+try:
+    from tqdm import tqdm  # type: ignore
+except Exception:
+    class tqdm:  # type: ignore
+        def __init__(self, iterable=None, total=None, **kwargs):
+            self.iterable = iterable
+            self.total = total
+
+        def __iter__(self):
+            if self.iterable is None:
+                return iter(())
+            return iter(self.iterable)
+
+        def update(self, n=1):
+            return None
+
+        def close(self):
+            return None
+
 INDEX_PREFIXES = ["DIA", "QQQ", "SPY", "^VIX"]
+MARKET_INDICES_FILENAMES = ["market_indicies.jsonl", "market_indices.jsonl"]
+
+_DEBUG = os.getenv("PREPROCESS_DEBUG", "0").strip().lower() in {"1", "true", "yes", "y"}
+_PROGRESS = os.getenv("PREPROCESS_PROGRESS", "1").strip().lower() in {"1", "true", "yes", "y"}
+
+
+def _dbg(msg: str) -> None:
+    if _DEBUG:
+        print(f"[preprocess] {msg}")
 
 
 def expected_spy_feature_columns() -> list[str]:
@@ -50,7 +88,10 @@ def create_spy_features(spy_df: pd.DataFrame) -> pd.DataFrame:
         # Returns
         spy_df[f'{p}_return_1d'] = spy_df[close_col].pct_change(1)
         spy_df[f'{p}_return_5d'] = spy_df[close_col].pct_change(5)
-        spy_df[f'{p}_intraday_return'] = (spy_df[close_col] - spy_df[open_col]) / (spy_df[open_col] + 1e-9)
+        if open_col in spy_df.columns:
+            spy_df[f'{p}_intraday_return'] = (spy_df[close_col] - spy_df[open_col]) / (spy_df[open_col] + 1e-9)
+        else:
+            spy_df[f'{p}_intraday_return'] = np.nan
         spy_df[f'{p}_log_return_1d'] = np.log(spy_df[close_col] / spy_df[close_col].shift(1))
         
         # Moving Averages
@@ -214,7 +255,10 @@ def _canonicalize_ohlcv_columns(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _load_news_groups_from_csv(news_csv_path: Path) -> tuple[pd.DataFrame, pd.Timestamp, pd.Timestamp]:
+def _load_news_groups_from_csv(
+    news_csv_path: Path,
+    preprocess_start: pd.Timestamp,
+) -> tuple[pd.DataFrame, pd.Timestamp, pd.Timestamp]:
     """
     Convert article-level CSV rows into grouped `tweets` records by (ticker, date_key).
     """
@@ -237,15 +281,37 @@ def _load_news_groups_from_csv(news_csv_path: Path) -> tuple[pd.DataFrame, pd.Ti
     min_date: pd.Timestamp | None = None
     max_date: pd.Timestamp | None = None
 
+    text_candidates = [
+        "Luhn_summary",
+        "Textrank_summary",
+        "Lexrank_summary",
+        "Lsa_summary",
+        "Article_title",
+        "Article",
+    ]
+
+    chunk_size = int(os.getenv("NEWS_CHUNKSIZE", "200000"))
+    _dbg(f"Loading news: {news_csv_path} (chunksize={chunk_size:,})")
+
+    pbar = tqdm(total=None, desc="news rows", unit="rows", disable=not _PROGRESS)
     for chunk in pd.read_csv(
         news_csv_path,
         usecols=lambda c: c in set(usecols),
-        chunksize=25_000,
+        chunksize=chunk_size,
         low_memory=False,
     ):
+        pbar.update(len(chunk))
         chunk["parsed_dt"] = pd.to_datetime(chunk.get("Date"), errors="coerce", utc=True).dt.tz_convert(None)
-        chunk["ticker"] = chunk.get("Stock_symbol").astype(str).str.strip().str.upper()
-        chunk = chunk[chunk["parsed_dt"].notna() & chunk["ticker"].ne("")]
+        chunk = chunk[chunk["parsed_dt"].notna()]
+        if chunk.empty:
+            continue
+
+        chunk = chunk[chunk["parsed_dt"] >= preprocess_start]
+        if chunk.empty:
+            continue
+
+        chunk["ticker"] = chunk.get("Stock_symbol").astype("string").str.strip().str.upper()
+        chunk = chunk[chunk["ticker"].notna() & chunk["ticker"].ne("")]
         if chunk.empty:
             continue
 
@@ -254,39 +320,35 @@ def _load_news_groups_from_csv(news_csv_path: Path) -> tuple[pd.DataFrame, pd.Ti
         min_date = this_min if min_date is None else min(min_date, this_min)
         max_date = this_max if max_date is None else max(max_date, this_max)
 
-        text_candidates = [
-            "Luhn_summary",
-            "Textrank_summary",
-            "Lexrank_summary",
-            "Lsa_summary",
-            "Article_title",
-            "Article",
-        ]
+        present_candidates = [c for c in text_candidates if c in chunk.columns]
+        if not present_candidates:
+            continue
 
-        for row in chunk.itertuples(index=False):
-            row_dict = row._asdict()
-            text = ""
-            for c in text_candidates:
-                v = row_dict.get(c)
-                if isinstance(v, str) and v.strip():
-                    text = v.strip()
-                    break
-            if not text:
-                continue
+        cand_df = chunk[present_candidates].astype("string").replace(r"^\s*$", pd.NA, regex=True)
+        chunk["text"] = cand_df.bfill(axis=1).iloc[:, 0]
+        chunk = chunk[chunk["text"].notna()]
+        if chunk.empty:
+            continue
 
-            date_key = row_dict["parsed_dt"].date()
-            ticker = row_dict["ticker"]
-            rec = {
-                "id": row_dict.get("Unnamed: 0"),
-                "created_at": str(row_dict["parsed_dt"]),
-                "text": text,
-                "title": row_dict.get("Article_title"),
-                "url": row_dict.get("Url"),
-                "publisher": row_dict.get("Publisher"),
-                "author": row_dict.get("Author"),
+        chunk["date_key"] = chunk["parsed_dt"].dt.date
+        rec_df = pd.DataFrame(
+            {
+                "id": chunk.get("Unnamed: 0"),
+                "created_at": chunk["parsed_dt"].astype(str),
+                "text": chunk["text"].astype(str),
+                "title": chunk.get("Article_title"),
+                "url": chunk.get("Url"),
+                "publisher": chunk.get("Publisher"),
+                "author": chunk.get("Author"),
+                "ticker": chunk["ticker"],
+                "date_key": chunk["date_key"],
             }
-            grouped.setdefault((ticker, date_key), []).append(rec)
+        )
 
+        for (ticker, date_key), grp in rec_df.groupby(["ticker", "date_key"], sort=False):
+            grouped.setdefault((str(ticker), date_key), []).extend(grp.drop(columns=["ticker", "date_key"]).to_dict(orient="records"))
+
+    pbar.close()
     if not grouped:
         raise ValueError(f"No usable news rows found in {news_csv_path}")
     if min_date is None or max_date is None:
@@ -302,45 +364,84 @@ def _load_stock_data_from_csvs(
     stock_dir: Path,
     tickers: set[str],
     min_date: pd.Timestamp,
-    max_date: pd.Timestamp,
+    max_date: pd.Timestamp | None,
+    *,
+    include_index_tickers: bool,
 ) -> pd.DataFrame:
     """
     Load selected ticker CSVs from `stock_dir` and normalize into a single OHLCV frame.
     """
-    files = list(stock_dir.glob("*.csv"))
-    if not files:
-        raise FileNotFoundError(f"No CSV files found under {stock_dir}")
+    if not stock_dir.exists():
+        raise FileNotFoundError(f"Missing stock directory: {stock_dir}")
 
     file_by_ticker: dict[str, Path] = {}
-    for f in files:
-        stem = f.stem.strip().upper()
+    for entry in os.scandir(stock_dir):
+        if not entry.is_file() or not entry.name.lower().endswith(".csv"):
+            continue
+        stem = Path(entry.name).stem.strip().upper()
         if stem and stem not in file_by_ticker:
-            file_by_ticker[stem] = f
+            file_by_ticker[stem] = Path(entry.path)
 
-    # Always include index tickers for market features.
-    needed = set(tickers) | {"SPY", "QQQ", "DIA", "^VIX", "VIX"}
+    needed = set(tickers)
+    if include_index_tickers:
+        needed |= {"SPY", "QQQ", "DIA", "^VIX", "VIX"}
     selected = sorted(t for t in needed if t in file_by_ticker)
     if not selected:
         raise ValueError("No stock CSV files matched the requested ticker universe.")
 
+    _dbg(f"Stock files selected: {len(selected):,} (io_workers={os.getenv('PREPROCESS_IO_WORKERS','6')})")
     lookback_start = (min_date - pd.Timedelta(days=120)).normalize()
-    lookahead_end = (max_date + pd.Timedelta(days=10)).normalize()
+    lookahead_end = (max_date + pd.Timedelta(days=10)).normalize() if max_date is not None else None
 
-    rows = []
-    for ticker in selected:
+    wanted = {
+        "date",
+        "datetime",
+        "open",
+        "high",
+        "low",
+        "close",
+        "adj close",
+        "adj_close",
+        "adjusted close",
+        "volume",
+    }
+
+    def _load_one(ticker: str) -> pd.DataFrame | None:
         path = file_by_ticker[ticker]
         try:
-            raw = pd.read_csv(path)
+            raw = pd.read_csv(path, usecols=lambda c: c.strip().lower() in wanted, low_memory=False)
             g = _canonicalize_ohlcv_columns(raw)
         except Exception as e:
             print(f"WARN: skipping {path.name}: {e}")
-            continue
+            return None
 
-        g = g[(g["Date"] >= lookback_start) & (g["Date"] <= lookahead_end)]
+        g = g[g["Date"] >= lookback_start]
+        if lookahead_end is not None:
+            g = g[g["Date"] <= lookahead_end]
         if g.empty:
-            continue
+            return None
         g["ticker"] = "^VIX" if ticker == "VIX" else ticker
-        rows.append(g)
+        return g
+
+    io_workers = int(os.getenv("PREPROCESS_IO_WORKERS", "6"))
+    io_workers = max(1, min(io_workers, 32, len(selected)))
+
+    rows: list[pd.DataFrame] = []
+    if io_workers == 1:
+        for t in tqdm(selected, desc="stock csvs", unit="file", disable=not _PROGRESS):
+            g = _load_one(t)
+            if g is not None:
+                rows.append(g)
+    else:
+        with ThreadPoolExecutor(max_workers=io_workers) as ex:
+            futs = {ex.submit(_load_one, t): t for t in selected}
+            pbar = tqdm(total=len(futs), desc="stock csvs", unit="file", disable=not _PROGRESS)
+            for fut in as_completed(futs):
+                g = fut.result()
+                if g is not None:
+                    rows.append(g)
+                pbar.update(1)
+            pbar.close()
 
     if not rows:
         raise ValueError("No stock rows remained after filtering by date range.")
@@ -380,7 +481,35 @@ def _run_legacy_jsonl_pipeline(paths: dict[str, str]) -> tuple[pd.DataFrame, pd.
     return stock, news, market
 
 
-def _run_csv_pipeline(base_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def _resolve_market_indices_path(base_dir: Path) -> Path | None:
+    for name in MARKET_INDICES_FILENAMES:
+        p = base_dir / name
+        if p.exists():
+            return p
+    return None
+
+
+def _load_market_indices_jsonl(market_path: Path, min_date: pd.Timestamp, max_date: pd.Timestamp | None) -> pd.DataFrame:
+    market = pd.read_json(market_path, lines=True)
+    if "Date" not in market.columns and "date" in market.columns:
+        market = market.rename(columns={"date": "Date"})
+    if "Date" not in market.columns:
+        raise ValueError(f"Market indices file missing Date column: {market_path}")
+
+    market["Date"] = pd.to_datetime(market["Date"], errors="coerce").dt.normalize()
+    market = market.dropna(subset=["Date"]).sort_values("Date")
+
+    lookback_start = (min_date - pd.Timedelta(days=120)).normalize()
+    market = market[market["Date"] >= lookback_start].copy()
+    if max_date is not None:
+        lookahead_end = (max_date + pd.Timedelta(days=10)).normalize()
+        market = market[market["Date"] <= lookahead_end].copy()
+    if market.empty:
+        raise ValueError(f"Market indices file has no rows in range: {market_path}")
+    return market
+
+
+def _run_csv_pipeline(base_dir: Path, preprocess_start: pd.Timestamp) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     news_csv = base_dir / "news_data.csv"
     stock_dir = base_dir / "stock_data"
     if not news_csv.exists():
@@ -388,18 +517,36 @@ def _run_csv_pipeline(base_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame, pd.Da
     if not stock_dir.exists():
         raise FileNotFoundError(f"Missing required directory: {stock_dir}")
 
-    tweets_grouped, min_date, max_date = _load_news_groups_from_csv(news_csv)
+    t0 = time.perf_counter()
+    tweets_grouped, min_date, max_date = _load_news_groups_from_csv(news_csv, preprocess_start)
+    _dbg(f"News grouped: {len(tweets_grouped):,} ticker-days in {time.perf_counter()-t0:.1f}s")
     ticker_universe = set(tweets_grouped["_ticker"].astype(str).str.upper().tolist())
+    _dbg(f"Ticker universe: {len(ticker_universe):,}")
 
-    stock_raw = _load_stock_data_from_csvs(stock_dir, ticker_universe, min_date, max_date)
+    market_path = _resolve_market_indices_path(base_dir)
+    _dbg(f"Market indices: {market_path if market_path else 'derived from stock_data/'}")
+    # Use full stock history from preprocess_start through end of each ticker's file.
+    t1 = time.perf_counter()
+    stock_raw = _load_stock_data_from_csvs(
+        stock_dir,
+        ticker_universe,
+        preprocess_start,
+        None,
+        include_index_tickers=(market_path is None),
+    )
+    _dbg(f"Stock raw loaded: {len(stock_raw):,} rows in {time.perf_counter()-t1:.1f}s")
     stock = create_stock_features(stock_raw)
     stock = stock[
-        (stock["Date"] >= min_date.normalize())
-        & (stock["Date"] <= max_date.normalize())
+        (stock["Date"] >= preprocess_start.normalize())
         & (stock["ticker"].isin(ticker_universe))
     ].copy()
+    _dbg(f"Stock feature rows: {len(stock):,}")
 
-    market = _build_market_indices_from_stock(stock_raw)
+    if market_path is not None:
+        stock_end = pd.to_datetime(stock_raw["Date"], errors="coerce").dropna().max()
+        market = _load_market_indices_jsonl(market_path, preprocess_start, stock_end)
+    else:
+        market = _build_market_indices_from_stock(stock_raw)
     return stock, tweets_grouped, market
 
 
@@ -423,19 +570,20 @@ def _align_market_dates_to_stock_dates(market: pd.DataFrame, stock: pd.DataFrame
 def main():
     # Configuration
     preprocess_start = pd.Timestamp(os.getenv("PREPROCESS_START_DATE", "2010-01-01")).normalize()
+    base_dir = Path(os.getenv("DATA_PATH", "data"))
     paths = {
-        "stock": "data/stock_data.jsonl",
-        "tweets": "data/tweet_data.jsonl",
-        "market": "data/market_indices.jsonl",
-        "output_jsonl": "data/data.jsonl",
-        "output_parquet": "data/data.parquet",
+        "stock": str(base_dir / "stock_data.jsonl"),
+        "tweets": str(base_dir / "tweet_data.jsonl"),
+        "market": str(base_dir / "market_indices.jsonl"),
+        "output_jsonl": str(base_dir / "data.jsonl"),
+        "output_parquet": str(base_dir / "data.parquet"),
     }
 
     use_legacy = all(os.path.exists(paths[k]) for k in ["stock", "tweets", "market"])
     if use_legacy:
         stock, news_or_grouped, market = _run_legacy_jsonl_pipeline(paths)
     else:
-        stock, news_or_grouped, market = _run_csv_pipeline(Path("data"))
+        stock, news_or_grouped, market = _run_csv_pipeline(base_dir, preprocess_start)
 
     # Enforce training window at preprocessing time.
     stock["Date"] = pd.to_datetime(stock["Date"], errors="coerce")

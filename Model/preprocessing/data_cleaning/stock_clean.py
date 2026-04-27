@@ -2,17 +2,25 @@ import pandas as pd
 import glob
 import os
 import numpy as np
+
+os.environ.setdefault("NUMBA_DISABLE_JIT", "1")
 import pandas_ta as ta
 import torch
 from sklearn.preprocessing import StandardScaler
+from pathlib import Path
 
-def create_data():
-    start_date = '2014-01-01'
-    end_date = '2016-03-31'
-    output_file = "data/combined_stock_data.jsonl"
-    path = "/home/matt/Git/Chirp-Alpha/data/stock_data"
+DATA_DIR = Path(os.getenv("DATA_PATH", "data"))
 
-    all_files = glob.glob(os.path.join(path, "*.csv"))
+
+def create_data(start_date: str = "2010-01-01", end_date: str | None = None):
+    """
+    Optional helper to consolidate per-ticker CSVs into a single JSONL.
+    This is not required for the main pipeline (combined_jsonl reads CSVs directly).
+    """
+    output_file = DATA_DIR / "combined_stock_data.jsonl"
+    path = DATA_DIR / "stock_data"
+
+    all_files = glob.glob(str(path / "*.csv"))
 
     with open(output_file, "w") as f:
         for filename in all_files:
@@ -21,7 +29,9 @@ def create_data():
                 df = pd.read_csv(filename)
                 date_col = 'Date' if 'Date' in df.columns else 'date'
                 df[date_col] = pd.to_datetime(df[date_col])
-                mask = (df[date_col] >= start_date) & (df[date_col] <= end_date)
+                mask = df[date_col] >= start_date
+                if end_date:
+                    mask = mask & (df[date_col] <= end_date)
                 df_filtered = df.loc[mask].copy()
                 if not df_filtered.empty:
                     df_filtered['ticker'] = ticker
@@ -32,11 +42,11 @@ def create_data():
                 print(f"Error processing {filename}: {e}")
 
 def create_features():
-    input_file = f"{DATA_DIR}/combined_stock_data.jsonl"
+    input_file = str(DATA_DIR / "combined_stock_data.jsonl")
     if not os.path.exists(input_file):
         print(f"Combined stock data not found: {input_file}. Run create_data() first.")
         return None
-    output_file = f"{DATA_DIR}/stock_data.jsonl"
+    output_file = str(DATA_DIR / "stock_data.jsonl")
     
     df = pd.read_json(input_file, lines=True)
     # Rename columns properly
@@ -121,7 +131,6 @@ def create_features():
 
     final_df = pd.concat(feature_dfs, ignore_index=True)
     final_df = final_df.dropna(subset=['SMA_50', 'momentum'])
-    output_file = f"{DATA_DIR}/stock_data.jsonl"
     final_df.to_json(output_file, orient='records', lines=True, date_format='iso')
     print(f"Stock features saved to {output_file}")
     return final_df
@@ -139,7 +148,9 @@ def preprocess_to_tensor(df, device="cuda"):
     
     return scaler, torch.tensor(scaled_data, dtype=torch.float32).to(device)
 
-if __name__ == "__main__":    final_df = create_features()
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    scaler, tensor = preprocess_to_tensor(final_df, device=device)
-    print(f"Tensor Shape: {tensor.shape}")
+if __name__ == "__main__":
+    final_df = create_features()
+    if final_df is not None:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        scaler, tensor = preprocess_to_tensor(final_df, device=device)
+        print(f"Tensor Shape: {tensor.shape}")
