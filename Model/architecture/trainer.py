@@ -1,34 +1,34 @@
-from architecture.models.encoder import Encoder
-from architecture.models.stock_nn import StockNetwork
-from architecture.models.index_nn import IndexNetwork
-from architecture.models.final_output import OutputNN
+import os
+from datetime import datetime
+from typing import Optional
+
+import boto3
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import torch
-from tqdm import tqdm
 import torch.nn.functional as F
+from architecture.models.encoder import Encoder
+from architecture.models.final_output import OutputNN
+from architecture.models.index_nn import IndexNetwork
+from architecture.models.stock_nn import StockNetwork
 from eval.validate import validate
-import numpy as np
-import os
-from typing import Optional
-import boto3
-from datetime import datetime
 
 
 class Trainer:
     def __init__(
-        self,
-        train_data: pd.DataFrame,
-        num_epochs: int,
-        sample_size: int,
-        train_stock: torch.Tensor,
-        train_spy: torch.Tensor,
-        learning_rate: float = 1e-3,
-        dropout: float = 0.1,
-        l1_lambda: float = 1e-5,
-        train_tweet_embeddings: Optional[torch.Tensor] = None,
-        train_tweet_counts: Optional[torch.Tensor] = None,
-        encoder: Optional[torch.nn.Module] = None,
+            self,
+            train_data: pd.DataFrame,
+            num_epochs: int,
+            sample_size: int,
+            train_stock: torch.Tensor,
+            train_spy: torch.Tensor,
+            learning_rate: float = 1e-3,
+            dropout: float = 0.1,
+            l1_lambda: float = 1e-5,
+            train_tweet_embeddings: Optional[torch.Tensor] = None,
+            train_tweet_counts: Optional[torch.Tensor] = None,
+            encoder: Optional[torch.nn.Module] = None,
     ):
         # Models
         if encoder is not None:
@@ -37,14 +37,13 @@ class Trainer:
             self.encoder = None
         else:
             self.encoder = Encoder()
-        self.stock_network = StockNetwork(dropout = .1)
-        self.index_network = IndexNetwork(dropout = .1)
-        self.output_network = OutputNN(816, dropout = dropout)
-        
-        
+        self.stock_network = StockNetwork(dropout=.1)
+        self.index_network = IndexNetwork(dropout=.1)
+        self.output_network = OutputNN(816, dropout=dropout)
+
         self.dropout = dropout
         self.l1_lambda = l1_lambda
-        
+
         self.train_data = train_data
         self.num_epochs = num_epochs
         self.sample_size = sample_size
@@ -55,19 +54,16 @@ class Trainer:
         self.train_tweet_counts = train_tweet_counts
         self._train_tweet_embeddings_device: Optional[torch.Tensor] = None
         self._train_tweet_counts_device: Optional[torch.Tensor] = None
-        
-        
+
         momentum_vals = train_data['stock'].apply(lambda x: x.get('momentum')).values
-        
+
         total = len(self.train_data)
         num_up = len(np.where(momentum_vals >= 0)[0])
         num_down = total - num_up
-        
-        
+
         self.weight_up = total / (2 * num_up)
         self.weight_down = total / (2 * num_down)
-            
-        
+
         self.device = self._get_device()
         self.scaler = torch.amp.GradScaler(device="cuda", enabled=torch.cuda.is_available())
 
@@ -75,36 +71,34 @@ class Trainer:
         self.best_val_mean_squared_val = float('inf')
         self.best_l1 = float('inf')
         self.best_r2 = float('-inf')
-        
+
         self.early_stopping_patience = 10
         self.early_stopping_counter = 0
         self.min_epoch_early = 20
-        
+
         self.val_error = []
         self.train_error = []
         self.accuracy_val = []
         self.accuracy_train = []
         self.r2_val = []
         self.r2_train = []
-        
+
         if self.encoder is not None:
             self.encoder.to(self.device)
         self.stock_network.to(self.device)
         self.index_network.to(self.device)
         self.output_network.to(self.device)
-       
-       
-        
+
     def early_stopping(
-        self,
-        val_data: pd.DataFrame,
-        stock_scaler,
-        spy_scaler,
-        expected_stock_cols,
-        expected_spy_cols,
-        epoch,
-        val_tweet_embeddings: Optional[torch.Tensor] = None,
-        val_tweet_counts: Optional[torch.Tensor] = None,
+            self,
+            val_data: pd.DataFrame,
+            stock_scaler,
+            spy_scaler,
+            expected_stock_cols,
+            expected_spy_cols,
+            epoch,
+            val_tweet_embeddings: Optional[torch.Tensor] = None,
+            val_tweet_counts: Optional[torch.Tensor] = None,
     ):
         val_mean_squared_val, val_l1, val_r2, val_directional_accuracy = validate(
             val_data,
@@ -133,17 +127,16 @@ class Trainer:
             val_tweet_counts=self._train_tweet_counts_device if self._train_tweet_counts_device is not None else self.train_tweet_counts,
         )
 
-        
         self.val_error.append(val_mean_squared_val)
         self.train_error.append(train_mean_sqaure)
         self.accuracy_val.append(val_directional_accuracy)
         self.accuracy_train.append(train_directional_accuracy)
         self.r2_val.append(val_r2)
         self.r2_train.append(train_r2)
-        
+
         if epoch < self.min_epoch_early:
             return val_mean_squared_val, val_l1, val_r2
-        
+
         if float(val_r2) > self.best_r2:
             self.best_val_mean_squared_val = val_mean_squared_val
             self.best_l1 = val_l1
@@ -157,24 +150,21 @@ class Trainer:
             self.early_stopping_counter = 0
         else:
             self.early_stopping_counter += 1
-            
-            
-        
-        
+
         return val_mean_squared_val, val_l1, val_r2
 
     def train(
-        self,
-        test_data: pd.DataFrame,
-        stock_scaler,
-        spy_scaler,
-        stock_cols,
-        spy_cols,
-        val_tweet_embeddings: Optional[torch.Tensor] = None,
-        val_tweet_counts: Optional[torch.Tensor] = None,
+            self,
+            test_data: pd.DataFrame,
+            stock_scaler,
+            spy_scaler,
+            stock_cols,
+            spy_cols,
+            val_tweet_embeddings: Optional[torch.Tensor] = None,
+            val_tweet_counts: Optional[torch.Tensor] = None,
     ):
         batch_size = 1024
-        
+
         if self.encoder is not None:
             self.encoder.eval()
         if self.train_tweet_embeddings is not None:
@@ -188,55 +178,49 @@ class Trainer:
             val_tweet_embeddings_device = val_tweet_embeddings.to(self.device, dtype=torch.float32)
         if val_tweet_counts is not None:
             val_tweet_counts_device = val_tweet_counts.to(self.device)
-        
-        
-        
+
         param_groups = [
             {
                 'params': list(self.stock_network.parameters()) + list(self.index_network.parameters()),
-                'lr': self.learning_rate, 
-                'weight_decay': 1e-4 
+                'lr': self.learning_rate,
+                'weight_decay': 1e-4
             },
             {
                 'params': self.output_network.parameters(),
-                'lr': self.learning_rate * 10, 
-                'weight_decay': 1e-2 
+                'lr': self.learning_rate * 10,
+                'weight_decay': 1e-2
             }
         ]
-        
+
         self.global_optimizer = torch.optim.AdamW(
-            param_groups, 
+            param_groups,
             eps=1e-5
         )
-        
-        
-        
+
         loss_history = []
         loss_history_per_epoch = []
-        
+
         for epoch in range(self.num_epochs):
             indices = torch.randperm(len(self.train_data))
             epoch_loss = 0.0
-            
+
             for i in range(0, len(self.train_data), batch_size):
-                batch_idx = indices[i : i + batch_size]
+                batch_idx = indices[i: i + batch_size]
                 batch = self.train_data.iloc[batch_idx.tolist()]
                 self.stock_network.train()
                 self.index_network.train()
                 self.output_network.train()
-                
+
                 curr_size = len(batch)
-                
+
                 with torch.amp.autocast(self.device.type, enabled=torch.cuda.is_available()):
-                    
-                    
-                    target = torch.tensor([row['momentum'] for row in batch['stock']], 
-                                        dtype=torch.float32, device=self.device).unsqueeze(1)
-                
-                
+
+                    target = torch.tensor([row['momentum'] for row in batch['stock']],
+                                          dtype=torch.float32, device=self.device).unsqueeze(1)
+
                     flat_texts = []
                     lengths = []
-                    
+
                     with torch.no_grad():
                         if self._train_tweet_embeddings_device is not None:
                             text_feat = self._train_tweet_embeddings_device[batch_idx]
@@ -249,34 +233,33 @@ class Trainer:
                                 texts = [t['text'] for t in tl if isinstance(t, dict) and 'text' in t]
                                 flat_texts.extend(texts)
                                 lengths.append(len(texts))
-                                
+
                             text_feat = self.output_network.no_tweet_embedding.unsqueeze(0).repeat(curr_size, 1)
-                            
+
                             if flat_texts:
                                 if self.encoder is None:
-                                    raise RuntimeError("Encoder is required when precomputed tweet embeddings are not provided.")
+                                    raise RuntimeError(
+                                        "Encoder is required when precomputed tweet embeddings are not provided.")
                                 all_embs = self.encoder(flat_texts)
                                 splits = torch.split(all_embs, lengths)
                                 for idx, (split, length) in enumerate(zip(splits, lengths)):
                                     if length > 0:
                                         text_feat[idx] = split.mean(dim=0)
-                    
+
                     s_input = self.train_stock[batch_idx].to(self.device, non_blocking=torch.cuda.is_available())
                     s_feat = self.stock_network(s_input)
-                    
+
                     i_input = self.train_spy[batch_idx].to(self.device, non_blocking=torch.cuda.is_available())
                     i_feat = self.index_network(i_input)
-                    
-                    
-    
+
                     combined = torch.cat((s_feat, i_feat, text_feat), dim=1)
                     prediction = self.output_network(combined)
                     weights = torch.where(target >= 0, self.weight_up, self.weight_down)
 
                     base_loss = F.huber_loss(prediction, target, reduction='mean', weight=weights)
-                            
+
                     l1_reg = sum(p.norm(1) for p in self.output_network.parameters())
-                    
+
                     total_loss = base_loss + self.l1_lambda * l1_reg
                     self.global_optimizer.zero_grad()
                     self.scaler.scale(total_loss).backward()
@@ -285,13 +268,11 @@ class Trainer:
                     self.scaler.update()
                     epoch_loss += total_loss.item()
                     loss_history.append(total_loss.item())
-            
-            
+
             num_batches = max(1, len(self.train_data) // batch_size)
             if len(self.train_data) % batch_size != 0 and len(self.train_data) > batch_size:
                 num_batches += 1
-            loss_history_per_epoch.append(epoch_loss / num_batches)                    
-
+            loss_history_per_epoch.append(epoch_loss / num_batches)
 
             self.early_stopping(
                 test_data,
@@ -304,24 +285,22 @@ class Trainer:
                 val_tweet_counts=val_tweet_counts_device,
             )
             if self.early_stopping_counter >= self.early_stopping_patience:
-                print(f'Early stopping at epoch {epoch} LR={self.learning_rate}, DR={self.dropout}, L1={self.l1_lambda}')
+                print(
+                    f'Early stopping at epoch {epoch} LR={self.learning_rate}, DR={self.dropout}, L1={self.l1_lambda}')
                 break
 
-            
-                    
-        
         if self.best_model_state is not None:
-            print(f"Loading best weights with R2: {self.best_r2:.4f} | Huber Error: {self.best_val_mean_squared_val:.4f} | Combo: LR={self.learning_rate}, DR={self.dropout}, L1={self.l1_lambda}")
+            print(
+                f"Loading best weights with R2: {self.best_r2:.4f} | Huber Error: {self.best_val_mean_squared_val:.4f} | Combo: LR={self.learning_rate}, DR={self.dropout}, L1={self.l1_lambda}")
             if self.encoder is not None:
                 self.encoder.load_state_dict(self.best_model_state['encoder'])
             self.stock_network.load_state_dict(self.best_model_state['stock_network'])
             self.index_network.load_state_dict(self.best_model_state['index_network'])
             self.output_network.load_state_dict(self.best_model_state['output_network'])
-        
-        
+
         os.makedirs(f'graphs/{self.learning_rate}_{self.dropout}_{self.l1_lambda}', exist_ok=True)
-        
-        plt.plot(self.val_error, label = "Validation Huber Error")
+
+        plt.plot(self.val_error, label="Validation Huber Error")
         plt.plot(self.train_error, label="Training Huber Error")
         plt.xlabel('Epochs')
         plt.ylabel('Huber Error')
@@ -329,14 +308,13 @@ class Trainer:
         plt.title('Val Error vs Train Error')
         plt.savefig(f'graphs/{self.learning_rate}_{self.dropout}_{self.l1_lambda}/training_vs_val_error.png')
         plt.close()
-        
+
         plt.plot(loss_history_per_epoch)
         plt.xlabel('Epoch')
         plt.ylabel('Loss')
         plt.title('Training Loss per Epoch')
         plt.savefig(f'graphs/{self.learning_rate}_{self.dropout}_{self.l1_lambda}/training_loss_per_epoch.png')
         plt.close()
-
 
         plt.plot(self.r2_train, label="Training R2")
         plt.plot(self.r2_val, label="Validation R2")
@@ -346,7 +324,6 @@ class Trainer:
         plt.title('R^2 per Epoch')
         plt.savefig(f'graphs/{self.learning_rate}_{self.dropout}_{self.l1_lambda}/r^2_per_epoch.png')
         plt.close()
-        
 
         data = {
             'epoch': list(range(len(self.train_error))),
@@ -358,18 +335,18 @@ class Trainer:
             'r2_val': self.r2_val,
             'r2_train': self.r2_train,
         }
-        
+
         df = pd.DataFrame(data)
-        
+
         csv_path = f'graphs/{self.learning_rate}_{self.dropout}_{self.l1_lambda}/metrics_{self.learning_rate}_{self.dropout}_{self.l1_lambda}.csv'
         df.to_csv(csv_path, index=False)
-        
+
         graph_dir = f'graphs/{self.learning_rate}_{self.dropout}_{self.l1_lambda}'
         for graph_file in ['training_vs_val_error.png', 'training_loss_per_epoch.png', 'r^2_per_epoch.png']:
             graph_path = f'{graph_dir}/{graph_file}'
             if os.path.exists(graph_path):
                 self._upload_to_s3(graph_path)
-        
+
         model_path = f'graphs/{self.learning_rate}_{self.dropout}_{self.l1_lambda}/model_weights.pt'
         torch.save({
             'encoder': self.encoder.state_dict() if self.encoder is not None else None,
@@ -387,10 +364,10 @@ class Trainer:
                 'best_val_r2': self.best_r2,
             }
         }, model_path)
-        
+
         self._upload_to_s3(model_path)
         self._upload_to_s3(csv_path)
-    
+
     def _upload_to_s3(self, local_path: str):
         import dotenv
         dotenv.load_dotenv()
@@ -415,4 +392,3 @@ class Trainer:
             return torch.device("mps")
 
         return torch.device("cpu")
-        
