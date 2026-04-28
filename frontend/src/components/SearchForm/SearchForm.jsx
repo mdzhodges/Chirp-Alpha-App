@@ -1,4 +1,6 @@
-export default function SearchForm({ symbol, setSymbol, setQuerySymbol, status, styles }) {
+import styles from './SearchForm.module.css'
+
+export default function SearchForm({ symbol, setSymbol, setQuerySymbol, status }) {
   return (
     <form
       onSubmit={(e) => {

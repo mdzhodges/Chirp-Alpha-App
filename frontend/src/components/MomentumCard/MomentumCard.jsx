@@ -1,4 +1,6 @@
-export default function MomentumCard({ momentumNumber, momentumDirection, styles }) {
+import styles from './MomentumCard.module.css'
+
+export default function MomentumCard({ momentumNumber, momentumDirection }) {
   return (
     <div className={styles.momentumCard}>
       <div className={styles.momentumLabel}>Predicted Momentum Score</div>

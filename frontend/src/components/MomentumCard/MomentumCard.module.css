@@ -1,0 +1,65 @@
+/* ---------- Momentum Display ---------- */
+.momentumCard {
+  margin-top: 48px;
+  padding: 48px;
+  border-radius: 16px;
+  background-color: var(--bg-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  text-align: center;
+}
+
+.momentumLabel {
+  font-family: var(--font-heading);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 12px;
+}
+
+.momentumValue {
+  font-family: var(--font-heading);
+  font-size: 6rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 16px;
+}
+
+.momentumValueUp {
+  color: var(--accent-green);
+}
+
+.momentumValueDown {
+  color: #ef4444;
+}
+
+.momentumValueNeutral {
+  color: var(--text-muted);
+}
+
+.momentumDirection {
+  display: inline-block;
+  padding: 8px 20px;
+  border-radius: 32px;
+  font-family: var(--font-heading);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.momentumDirectionUp {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: var(--accent-green);
+}
+
+.momentumDirectionDown {
+  background-color: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.momentumDirectionNeutral {
+  background-color: rgba(161, 161, 170, 0.15);
+  color: var(--text-muted);
+}
