@@ -1,0 +1,32 @@
+.tab {
+  position: absolute;
+  top: 5.5rem; 
+  z-index: 100; /* Keeps it floating above the charts and text */
+  background-color: var(--bg-secondary);
+  color: var(--text-main);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.5rem 1rem;
+  border-radius: 9999px; /* Pill shape */
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  /* The transition must perfectly match the 0.3s cubic-bezier of columns */
+  transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s ease, color 0.2s ease;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5); /* Subtle shadow so it pops off the background */
+}
+
+.tab:hover {
+  background-color: var(--text-main);
+  color: var(--bg-main);
+}
+
+.tabOpen {
+  /* Floats right over the center seam */
+  right: calc(50% - 2.5rem); 
+}
+
+.tabClosed {
+  /* Tucks into the top right corner of the screen */
+  right: 1.5rem; 
+}
