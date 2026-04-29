@@ -2,7 +2,7 @@ package com.chirp.backend.api;
 
 import com.chirp.backend.api.dto.TickerRequest;
 import com.chirp.backend.api.dto.TickerResponse;
-import com.chirp.backend.service.AlphaVantageTickerService;
+import com.chirp.backend.service.YahooFinanceTickerService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -19,9 +19,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/ticker")
 public class TickerController {
-  private final AlphaVantageTickerService tickerService;
+  private final YahooFinanceTickerService tickerService;
 
-  public TickerController(AlphaVantageTickerService tickerService) {
+  public TickerController(YahooFinanceTickerService tickerService) {
     this.tickerService = tickerService;
   }
 

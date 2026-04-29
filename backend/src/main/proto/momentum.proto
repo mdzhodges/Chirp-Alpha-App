@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package momentum;
+
+option java_multiple_files = true;
+
+service MomentumService {
+  rpc PredictMomentum (MomentumRequest) returns (MomentumResponse);
+  rpc BatchPredictMomentum (BatchMomentumRequest) returns (BatchMomentumResponse);
+}
+
+message BatchMomentumRequest {
+  string ticker = 1;
+  repeated OHLCV stock_history = 2;
+  map<string, OHLCVList> market_history = 3;
+  repeated string tweets = 4;
+  repeated int32 offsets = 5;
+}
+
+message BatchMomentumResponse {
+  repeated float momentums = 1;
+}
+
+message OHLCV {
+  string date = 1;
+  double open = 2;
+  double high = 3;
+  double low = 4;
+  double close = 5;
+  double volume = 6;
+  double adj_close = 7;
+}
+
+message MomentumRequest {
+  string ticker = 1;
+  repeated OHLCV stock_history = 2;
+  map<string, OHLCVList> market_history = 3; // Keys: SPY, QQQ, DIA, ^VIX
+  repeated string tweets = 4;
+  int32 offset = 5; // 0 for latest, 5 for 5 days ago, etc.
+}
+
+message OHLCVList {
+  repeated OHLCV points = 1;
+}
+
+message MomentumResponse {
+  float momentum = 1;
+}

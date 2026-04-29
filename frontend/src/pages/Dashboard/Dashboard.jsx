@@ -17,6 +17,7 @@ import TickerCard from '../../components/TickerCard/TickerCard';
 import MomentumCard from '../../components/MomentumCard/MomentumCard';
 import SearchForm from '../../components/SearchForm/SearchForm';
 import FeedToggleButton from '../../components/FeedToggleButton/FeedToggleButton';
+import PriceChart from '../../components/PriceChart/PriceChart';
 
 ChartJS.register(
   CategoryScale,
@@ -35,7 +36,7 @@ export default function Dashboard() {
 
   const { status, error, ticker, history } = useTickerData(querySymbol);
 
-  const momentumNumber = 1;
+  const momentumNumber = ticker?.momentum ?? 0;
   const momentumDirection = momentumNumber > 0.1 ? 'up' : momentumNumber < -0.1 ? 'down' : 'neutral';
 
   return (
@@ -73,6 +74,7 @@ export default function Dashboard() {
           )}
 
           {ticker && <TickerCard ticker={ticker} styles={styles} />}
+          {history && <PriceChart history={history} ticker={ticker} styles={styles} />}
 
         </div>
       </div>

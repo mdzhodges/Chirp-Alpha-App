@@ -114,7 +114,7 @@ def create_spy_features(spy_df: pd.DataFrame) -> pd.DataFrame:
     return spy_df
 
 
-def create_stock_features(stock_df: pd.DataFrame) -> pd.DataFrame:
+def create_stock_features(stock_df: pd.DataFrame, training: bool = True) -> pd.DataFrame:
     """
     Build per-ticker technical indicators and 5-day forward-return targets.
     """
@@ -130,7 +130,8 @@ def create_stock_features(stock_df: pd.DataFrame) -> pd.DataFrame:
         g = group.copy().sort_values("Date")
         if len(g) < 60:
             continue
-
+        
+        # ... (indicators logic) ...
         g["return_1d"] = g["Close"].pct_change(1)
         g["return_5d"] = g["Close"].pct_change(5)
         g["return_10d"] = g["Close"].pct_change(10)
@@ -207,7 +208,12 @@ def create_stock_features(stock_df: pd.DataFrame) -> pd.DataFrame:
 
         g["raw_return"] = g["Close"].shift(-5) / g["Close"] - 1
         g["momentum"] = g["raw_return"] * 100.0
-        g = g.dropna(subset=["SMA_50", "momentum"])
+
+        if training:
+            g = g.dropna(subset=["SMA_50", "momentum"])
+        else:
+            g = g.dropna(subset=["SMA_50"])
+
         feature_dfs.append(g)
 
     if not feature_dfs:
