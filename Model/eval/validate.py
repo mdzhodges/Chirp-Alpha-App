@@ -118,6 +118,12 @@ def validate(
     huber_val = float(F.huber_loss(pred_tensor, momentum_tensor).item())
 
     directional_accuracy = np.mean(np.sign(df['pred']) == np.sign(df['momentum_target']))
+    
+    up_mask = df['momentum_target'] >= 0
+    down_mask = df['momentum_target'] < 0
+    
+    up_accuracy = np.mean(np.sign(df.loc[up_mask, 'pred']) == np.sign(df.loc[up_mask, 'momentum_target'])) if up_mask.any() else 0.0
+    down_accuracy = np.mean(np.sign(df.loc[down_mask, 'pred']) == np.sign(df.loc[down_mask, 'momentum_target'])) if down_mask.any() else 0.0
 
     if encoder is not None and prev_modes["encoder"] is not None:
         encoder.train(prev_modes["encoder"])
@@ -125,4 +131,4 @@ def validate(
     index_network.train(prev_modes["index_network"])
     output_network.train(prev_modes["output_network"])
     
-    return huber_val, mean_l1_val, r_squared, directional_accuracy
+    return huber_val, mean_l1_val, r_squared, directional_accuracy, up_accuracy, down_accuracy

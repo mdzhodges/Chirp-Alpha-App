@@ -80,6 +80,8 @@ class Trainer:
         self.train_error = []
         self.accuracy_val = []
         self.accuracy_train = []
+        self.accuracy_up_val = []
+        self.accuracy_down_val = []
         self.r2_val = []
         self.r2_train = []
 
@@ -100,7 +102,7 @@ class Trainer:
             val_tweet_embeddings: Optional[torch.Tensor] = None,
             val_tweet_counts: Optional[torch.Tensor] = None,
     ):
-        val_mean_squared_val, val_l1, val_r2, val_directional_accuracy = validate(
+        val_mean_squared_val, val_l1, val_r2, val_directional_accuracy, val_up_acc, val_down_acc = validate(
             val_data,
             self.encoder,
             self.stock_network,
@@ -113,7 +115,7 @@ class Trainer:
             val_tweet_embeddings=val_tweet_embeddings,
             val_tweet_counts=val_tweet_counts,
         )
-        train_mean_sqaure, train_l1, train_r2, train_directional_accuracy = validate(
+        train_mean_sqaure, train_l1, train_r2, train_directional_accuracy, train_up_acc, train_down_acc = validate(
             self.train_data,
             self.encoder,
             self.stock_network,
@@ -131,11 +133,13 @@ class Trainer:
         self.train_error.append(train_mean_sqaure)
         self.accuracy_val.append(val_directional_accuracy)
         self.accuracy_train.append(train_directional_accuracy)
+        self.accuracy_up_val.append(val_up_acc)
+        self.accuracy_down_val.append(val_down_acc)
         self.r2_val.append(val_r2)
         self.r2_train.append(train_r2)
 
         if epoch < self.min_epoch_early:
-            return val_mean_squared_val, val_l1, val_r2
+            return val_mean_squared_val, val_l1, val_r2, val_directional_accuracy, val_up_acc, val_down_acc
 
         if float(val_r2) > self.best_r2:
             self.best_val_mean_squared_val = val_mean_squared_val
@@ -147,11 +151,35 @@ class Trainer:
                 'index_network': self.index_network.state_dict(),
                 'output_network': self.output_network.state_dict(),
             }
+            
+            # Save the best weights immediately
+            model_dir = f'graphs/{self.learning_rate}_{self.dropout}_{self.l1_lambda}'
+            os.makedirs(model_dir, exist_ok=True)
+            model_path = f'{model_dir}/best_model_weights.pt'
+            torch.save({
+                'epoch': epoch,
+                **self.best_model_state,
+                'hyperparameters': {
+                    'learning_rate': self.learning_rate,
+                    'dropout': self.dropout,
+                    'l1_lambda': self.l1_lambda,
+                },
+                'metrics': {
+                    'best_val_huber': self.best_val_mean_squared_val,
+                    'best_val_l1': self.best_l1,
+                    'best_val_r2': self.best_r2,
+                    'best_val_acc': val_directional_accuracy,
+                    'best_val_up_acc': val_up_acc,
+                    'best_val_down_acc': val_down_acc
+                }
+            }, model_path)
+            print(f"New best model found at epoch {epoch} (R2: {val_r2:.4f}). Saved to {model_path}")
+            
             self.early_stopping_counter = 0
         else:
             self.early_stopping_counter += 1
 
-        return val_mean_squared_val, val_l1, val_r2
+        return val_mean_squared_val, val_l1, val_r2, val_directional_accuracy, val_up_acc, val_down_acc
 
     def train(
             self,
@@ -332,6 +360,8 @@ class Trainer:
             'avg_epoch_loss': loss_history_per_epoch,
             'accuracy_val': self.accuracy_val,
             'accuracy_train': self.accuracy_train,
+            'accuracy_up_val': self.accuracy_up_val,
+            'accuracy_down_val': self.accuracy_down_val,
             'r2_val': self.r2_val,
             'r2_train': self.r2_train,
         }
@@ -347,28 +377,28 @@ class Trainer:
             if os.path.exists(graph_path):
                 self._upload_to_s3(graph_path)
 
-        model_path = f'graphs/{self.learning_rate}_{self.dropout}_{self.l1_lambda}/model_weights.pt'
-        torch.save({
-            'encoder': self.encoder.state_dict() if self.encoder is not None else None,
-            'stock_network': self.stock_network.state_dict(),
-            'index_network': self.index_network.state_dict(),
-            'output_network': self.output_network.state_dict(),
-            'hyperparameters': {
-                'learning_rate': self.learning_rate,
-                'dropout': self.dropout,
-                'l1_lambda': self.l1_lambda,
-            },
-            'metrics': {
-                'best_val_huber': self.best_val_mean_squared_val,
-                'best_val_l1': self.best_l1,
-                'best_val_r2': self.best_r2,
-            }
-        }, model_path)
+        model_path = f'graphs/{self.learning_rate}_{self.dropout}_{self.l1_lambda}/best_model_weights.pt'
+        if self.best_model_state is not None:
+            torch.save({
+                **self.best_model_state,
+                'hyperparameters': {
+                    'learning_rate': self.learning_rate,
+                    'dropout': self.dropout,
+                    'l1_lambda': self.l1_lambda,
+                },
+                'metrics': {
+                    'best_val_huber': self.best_val_mean_squared_val,
+                    'best_val_l1': self.best_l1,
+                    'best_val_r2': self.best_r2,
+                }
+            }, model_path)
 
-        self._upload_to_s3(model_path)
+            self._upload_to_s3(model_path)
         self._upload_to_s3(csv_path)
 
     def _upload_to_s3(self, local_path: str):
+        # S3 uploads disabled per user request
+        return
         import dotenv
         dotenv.load_dotenv()
         s3_bucket = os.getenv("S3_BUCKET", "")
@@ -385,6 +415,9 @@ class Trainer:
             print(f"Failed to upload {local_path} to S3: {e}")
 
     def _get_device(self) -> torch.device:
+        if os.getenv("FORCE_CPU", "false").lower() == "true":
+            return torch.device("cpu")
+
         if torch.cuda.is_available():
             return torch.device("cuda")
 

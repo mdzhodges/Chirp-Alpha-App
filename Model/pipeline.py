@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('Agg')
 import os
 import torch
 import dotenv
@@ -21,7 +23,15 @@ dotenv.load_dotenv()
 
 NUM_EPOCHS = int(os.getenv("NUM_EPOCHS", 5))
 SAMPLE_SIZE = int(os.getenv("SAMPLE_SIZE", 1000))
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+FORCE_CPU = os.getenv("FORCE_CPU", "false").lower() == "true"
+FULL_DATA = os.getenv("FULL_DATA", "false").lower() == "true"
+
+if FORCE_CPU:
+    DEVICE = torch.device("cpu")
+    torch.set_num_threads(int(os.getenv("NUM_THREADS", os.cpu_count() or 1)))
+else:
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 TWEET_EMBEDDINGS_PATH = os.getenv("TWEET_EMBEDDINGS_PATH", "data/fintwitbert_tweet_embeddings.pt")
 DATA_PATH = os.getenv("DATA_PATH", "/home/ubuntu/training/data")
 DATA_FORMAT = os.getenv("DATA_FORMAT", "parquet")  # "parquet" or "jsonl"
@@ -152,6 +162,8 @@ def run_preprocessing():
 
 
 def _upload_to_s3(local_path: str, s3_key: str = None):
+    # S3 uploads disabled per user request
+    return
     if not S3_BUCKET:
         return
     if s3_key is None:
@@ -233,14 +245,24 @@ def _read_parquet_tail(path: str, sample_size: int) -> pd.DataFrame:
 def _get_data():
     if DATA_FORMAT == "parquet":
         parquet_path = f"{DATA_PATH}/data.parquet"
-        if os.path.exists(parquet_path):
-            data = _read_parquet_tail(parquet_path, SAMPLE_SIZE)
+        if not os.path.exists(parquet_path):
+             raise FileNotFoundError(f"Parquet not found: {parquet_path}")
+        
+        if FULL_DATA:
+            data = pd.read_parquet(parquet_path)
         else:
-            raise FileNotFoundError(f"Parquet not found: {parquet_path}")
+            data = _read_parquet_tail(parquet_path, SAMPLE_SIZE)
     else:
         jsonl_path = f"{DATA_PATH}/data.jsonl"
-        data = pd.read_json(jsonl_path, lines=True).tail(SAMPLE_SIZE).reset_index(drop=True)
-    data = data.sort_values("Date").tail(SAMPLE_SIZE).reset_index(drop=True)
+        if FULL_DATA:
+            data = pd.read_json(jsonl_path, lines=True)
+        else:
+            data = pd.read_json(jsonl_path, lines=True).tail(SAMPLE_SIZE).reset_index(drop=True)
+    
+    if not FULL_DATA:
+        data = data.sort_values("Date").tail(SAMPLE_SIZE).reset_index(drop=True)
+    else:
+        data = data.sort_values("Date").reset_index(drop=True)
     return data
 
 
@@ -334,7 +356,7 @@ def walkforward(lr:float, dropout:float, l1_lambda:float):
             val_tweet_counts=val_tweet_counts,
         )
 
-        huber_val, l1_error, r2_value, directional_accuracy = validate(
+        huber_val, l1_error, r2_value, directional_accuracy, up_accuracy, down_accuracy = validate(
             val_data=test_df,
             stock_scaler=stock_scaler,
             spy_scaler=spy_scaler,
@@ -348,9 +370,9 @@ def walkforward(lr:float, dropout:float, l1_lambda:float):
             val_tweet_counts=test_tweet_counts,
         )
         
-        results = huber_val, l1_error, r2_value, directional_accuracy
+        results = huber_val, l1_error, r2_value, directional_accuracy, up_accuracy, down_accuracy
         
-        print(f'For Combo: LR={lr}, DR={dropout}, L1={l1_lambda}: Final Test Huber: {huber_val} | L1 Error: {l1_error} | R^2: {r2_value} | Directional Accuracy: {directional_accuracy}')
+        print(f'For Combo: LR={lr}, DR={dropout}, L1={l1_lambda}: Final Test Huber: {huber_val} | L1 Error: {l1_error} | R^2: {r2_value} | Directional Accuracy: {directional_accuracy} | Up Acc: {up_accuracy:.4f} | Down Acc: {down_accuracy:.4f}')
         
         
         all_results.append(results)
@@ -370,12 +392,21 @@ def walkforward(lr:float, dropout:float, l1_lambda:float):
 
 
 def run_experiment(params):
+    if FORCE_CPU:
+        torch.set_num_threads(int(os.getenv("NUM_THREADS", os.cpu_count() or 1)))
     lr, dr, l1 = params
     results = walkforward(lr=lr, dropout=dr, l1_lambda=l1)
     
     avg_results = np.mean(results, axis=0)
     
     last_fold = results[-1]
+
+    # Save per-fold results for this combo
+    combo_dir = f"graphs/{lr}_{dr}_{l1}"
+    os.makedirs(combo_dir, exist_ok=True)
+    folds_df = pd.DataFrame(results, columns=['Huber', 'L1', 'R2', 'Accuracy', 'Up_Accuracy', 'Down_Accuracy'])
+    folds_df.index.name = 'Fold'
+    folds_df.to_csv(f"{combo_dir}/fold_results.csv")
         
     return {
         "Hyperparameters": f"LR:{lr}|DR:{dr}|L1:{l1}",
@@ -383,24 +414,28 @@ def run_experiment(params):
         "L1_Avg": avg_results[1],
         "R2_Avg": avg_results[2],
         "Accuracy_Avg": avg_results[3],
+        "Up_Accuracy_Avg": avg_results[4],
+        "Down_Accuracy_Avg": avg_results[5],
         "Last_Fold_Huber": last_fold[0],
         "Last_Fold_L1": last_fold[1],
         "Last_Fold_R2": last_fold[2],
-        "Last_Fold_Accuracy": last_fold[3]
+        "Last_Fold_Accuracy": last_fold[3],
+        "Last_Fold_Up_Accuracy": last_fold[4],
+        "Last_Fold_Down_Accuracy": last_fold[5]
     }
 
 
 def main():
-    learning_rates = [1e-4, 5e-5, 2e-5]
+    learning_rates = [1e-5, 5e-6, 1e-6]
     dropout_rates = [0.1, 0.2]
-    l1_lambdas = [1e-3, 1e-4]
+    l1_lambdas = [1e-3, 5e-3]
     
     combos = [(lr, dr, l1) for lr in learning_rates for dr in dropout_rates for l1 in l1_lambdas]
     
     summary_results = []
     
 
-    max_workers = int(os.getenv("MAX_WORKERS", 8))
+    max_workers = 12
     
     print(f"Parallelizing {len(combos)} experiments across {max_workers} workers...")
     

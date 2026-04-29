@@ -18,16 +18,17 @@ class OutputNN(nn.Module):
         )
         
         ## linear Model
-        self.model = nn.Sequential(
-             nn.Linear(self.numeric_dim + self.latent_dim, 1)
-        )
+        # self.model = nn.Sequential(
+        #      nn.Linear(self.numeric_dim + self.latent_dim, 1)
+        # )
          
         # # Shallow NN
-        # self.model = nn.Sequential(
-        #      nn.Linear(self.numeric_dim + self.latent_dim, hidden_dim),
-        #      nn.LeakyReLU(0.01),
-        #      nn.Linear(hidden_dim, 1),
-        # )
+        self.model = nn.Sequential(
+              nn.Linear(self.numeric_dim + self.latent_dim, hidden_dim),
+              nn.LeakyReLU(0.01),
+              nn.Dropout(dropout),
+              nn.Linear(hidden_dim, 1),
+         )
         
             
         
