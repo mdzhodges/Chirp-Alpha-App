@@ -35,13 +35,6 @@
   transform: translateY(-2px); /* Tiny lift effect on hover for a polished feel */
 }
 
-.userInfo {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 0.75rem;
-}
-
 .avatar {
   width: 2.5rem;
   height: 2.5rem;
@@ -61,4 +54,24 @@
   font-family: var(--font-body);
   font-size: 0.875rem;
   line-height: 1.6;
+}
+
+.userInfo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between; /* This pushes the timestamp to the right */
+  margin-bottom: 0.75rem;
+}
+
+.userMeta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.timestamp {
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  white-space: nowrap; /* Prevents the date from wrapping to two lines */
 }

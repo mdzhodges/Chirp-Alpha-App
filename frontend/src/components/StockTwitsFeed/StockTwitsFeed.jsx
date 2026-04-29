@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import styles from './StockTwitsFeed.module.css';
 
 export default function StockTwitsFeed({ symbol }) {
   const [messages, setMessages] = useState([]);
@@ -15,7 +16,6 @@ export default function StockTwitsFeed({ symbol }) {
       setError(null);
       
       try {
-        // Hitting the Spring Boot controller you set up earlier
         const response = await fetch(`/api/momentum/feed/${encodeURIComponent(symbol)}`, {
           signal: controller.signal
         });
@@ -23,7 +23,6 @@ export default function StockTwitsFeed({ symbol }) {
         if (!response.ok) throw new Error(`Feed request failed (${response.status})`);
         
         const data = await response.json();
-        // The StockTwits payload stores the posts in the 'messages' array
         setMessages(data.messages || []);
         setStatus('success');
       } catch (err) {
@@ -37,40 +36,47 @@ export default function StockTwitsFeed({ symbol }) {
     return () => controller.abort();
   }, [symbol]);
 
-  // Temporary inline styles to get it working before we refactor CSS modules
+  // Helper function to format the raw API timestamp nicely
+  const formatTime = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleString(undefined, { 
+      month: 'short', 
+      day: 'numeric', 
+      hour: 'numeric', 
+      minute: '2-digit' 
+    });
+  };
+
   return (
-    <div className="flex flex-col gap-4">
-      <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '1rem' }}>
+    <div className={styles.feedContainer}>
+      <h2 className={styles.header}>
         Live Momentum Feed for {symbol}
       </h2>
 
-      {status === 'loading' && <div style={{ color: '#6b7280' }}>Loading feed...</div>}
-      {status === 'error' && <div style={{ color: '#ef4444' }}>Error: {error}</div>}
+      {status === 'loading' && <div className={styles.statusMessage}>Loading feed...</div>}
+      {status === 'error' && <div className={styles.errorMessage}>Error: {error}</div>}
       
       {status === 'success' && messages.length === 0 && (
-        <div style={{ color: '#6b7280', fontStyle: 'italic' }}>No recent momentum found.</div>
+        <div className={styles.statusMessage}>No recent momentum found.</div>
       )}
 
       {status === 'success' && messages.map((msg) => (
-        <div 
-          key={msg.id} 
-          style={{
-            backgroundColor: '#1a1a1a', 
-            padding: '1rem', 
-            borderRadius: '0.75rem', 
-            border: '1px solid #1f2937',
-            marginBottom: '1rem'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
-            <img 
-              src={msg.user.avatar_url} 
-              alt={msg.user.username} 
-              style={{ width: '2.5rem', height: '2.5rem', borderRadius: '9999px', backgroundColor: '#374151' }}
-            />
-            <span style={{ fontWeight: '600', color: '#e5e7eb' }}>{msg.user.username}</span>
+        <div key={msg.id} className={styles.messageCard}>
+          <div className={styles.userInfo}>
+            {/* Wrapper to group avatar and username together */}
+            <div className={styles.userMeta}>
+              <img 
+                src={msg.user.avatar_url} 
+                alt={msg.user.username} 
+                className={styles.avatar}
+              />
+              <span className={styles.username}>{msg.user.username}</span>
+            </div>
+            {/* The newly formatted timestamp pushed to the right side */}
+            <span className={styles.timestamp}>{formatTime(msg.created_at)}</span>
           </div>
-          <p style={{ color: '#9ca3af', fontSize: '0.875rem', lineHeight: '1.5' }}>
+          <p className={styles.messageBody}>
             {msg.body}
           </p>
         </div>

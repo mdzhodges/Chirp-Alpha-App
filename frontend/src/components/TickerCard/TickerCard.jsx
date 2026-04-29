@@ -1,7 +1,7 @@
-// src/components/TickerCard.jsx
 import { useMemo } from 'react';
+import styles from './TickerCards.module.css';
 
-export default function TickerCard({ ticker, styles }) {
+export default function TickerCard({ ticker }) {
   const currencyCode = useMemo(() => {
     const value = ticker?.currency ?? '';
     return /^[A-Z]{3}$/.test(value) ? value : 'USD';

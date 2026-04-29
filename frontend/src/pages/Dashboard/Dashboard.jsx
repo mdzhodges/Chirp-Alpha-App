@@ -14,6 +14,9 @@ import { Line } from 'react-chartjs-2';
 import styles from './Dashboard.module.css';
 import StockTwitsFeed from '../../components/StockTwitsFeed/StockTwitsFeed'
 import TickerCard from '../../components/TickerCard/TickerCard';
+import MomentumCard from '../../components/MomentumCard/MomentumCard';
+import SearchForm from '../../components/SearchForm/SearchForm';
+import FeedToggleButton from '../../components/FeedToggleButton/FeedToggleButton';
 
 ChartJS.register(
   CategoryScale,
@@ -28,6 +31,8 @@ ChartJS.register(
 export default function Dashboard() {
   const [symbol, setSymbol] = useState('AAPL');
   const [querySymbol, setQuerySymbol] = useState('AAPL');
+  const [isFeedOpen, setIsFeedOpen] = useState(true); // tweets show when true
+
   const { status, error, ticker, history } = useTickerData(querySymbol);
 
   const momentumNumber = 1;
@@ -37,63 +42,29 @@ export default function Dashboard() {
     <div className={styles.splitScreenContainer}>
       
       {/* --- LEFT COLUMN --- */}
-      <div className={styles.leftColumn}>
+      <div className={`${styles.leftColumn} ${isFeedOpen ? styles.leftColumnSplit : styles.leftColumnFull}`}>
         <div className={styles.container}>
           
-          <div className={styles.header}>
-            <div className={styles.badge}>Dashboard</div>
-            <h1 className={styles.title}>Momentum Analysis</h1>
+          <div style={{ marginBottom: '2rem' }}>
+            <div className={styles.header}>
+              <div className={styles.badge}>Dashboard</div>
+              <h1 className={styles.title} style={{ margin: 0 }}>Momentum Analysis</h1>
+            </div>
           </div>
 
-          <div className={styles.momentumCard}>
-            <div className={styles.momentumLabel}>Predicted Momentum Score</div>
-            <div
-              className={`${styles.momentumValue} ${
-                momentumDirection === 'up'
-                  ? styles.momentumValueUp
-                  : momentumDirection === 'down'
-                  ? styles.momentumValueDown
-                  : styles.momentumValueNeutral
-              }`}
-            >
-              {momentumNumber.toFixed(2)}
-            </div>
-            <span
-              className={`${styles.momentumDirection} ${
-                momentumDirection === 'up'
-                  ? styles.momentumDirectionUp
-                  : momentumDirection === 'down'
-                  ? styles.momentumDirectionDown
-                  : styles.momentumDirectionNeutral
-              }`}
-            >
-              {momentumDirection === 'up' ? 'Bullish' : momentumDirection === 'down' ? 'Bearish' : 'Neutral'}
-            </span>
-          </div>
+          <MomentumCard 
+            momentumNumber={momentumNumber} 
+            momentumDirection={momentumDirection} 
+            styles={styles} 
+          />
 
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              setQuerySymbol(symbol);
-            }}
-            className={styles.form}
-          >
-            <div className={styles.inputGroup}>
-              <span className={styles.inputLabel}>Ticker Symbol</span>
-              <input
-                className={styles.input}
-                value={symbol}
-                onChange={(e) => setSymbol(e.target.value)}
-                placeholder="AAPL"
-                autoCapitalize="characters"
-                autoCorrect="off"
-                spellCheck={false}
-              />
-            </div>
-            <button type="submit" className={styles.button} disabled={status === 'loading'}>
-              {status === 'loading' ? 'Loading…' : 'Fetch'}
-            </button>
-          </form>
+          <SearchForm 
+            symbol={symbol}
+            setSymbol={setSymbol}
+            setQuerySymbol={setQuerySymbol}
+            status={status}
+            styles={styles}
+          />
 
           {status === 'error' && (
             <div className={styles.error}>
@@ -108,10 +79,17 @@ export default function Dashboard() {
       {/* --- END LEFT COLUMN --- */}
 
       {/* --- RIGHT COLUMN --- */}
-      <div className={styles.rightColumn}>
-        <StockTwitsFeed symbol={querySymbol} />
+      <div className={`${styles.rightColumn} ${isFeedOpen ? styles.rightColumnOpen : styles.rightColumnClosed}`}>
+        <div className={styles.feedInnerWrapper}>
+          <StockTwitsFeed symbol={querySymbol} />
+        </div>
       </div>
-      {/* --- END RIGHT COLUMN --- */}
+
+      {/* --- THE FLOATING TAB --- */}
+      <FeedToggleButton 
+        isOpen={isFeedOpen} 
+        onToggle={() => setIsFeedOpen(!isFeedOpen)} 
+      />
 
     </div>
   );
