@@ -12,14 +12,14 @@ export default function Navbar() {
       </Link>
       
       <div className={styles.links}>
-        <Link to="/dashboard">Product</Link>
+        <Link to="/dashboard">Dashboard</Link>
         <Link to="/resources">Resources</Link>
         <Link to="/about">About</Link>
       </div>
 
       <div className={styles.actions}>
-        <Link to="AuthPage" className={styles.login}>Log in</Link>
-        <Link to="SignupPage" className={styles.signupBtn}>Sign up</Link>
+        <Link to="login" className={styles.login}>Log in</Link>
+        <Link to="signup" className={styles.signupBtn}>Sign up</Link>
       </div>
     </nav>
   );

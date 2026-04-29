@@ -1,0 +1,18 @@
+.loadingContainer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  width: 100vw;
+  background-color: var(--bg-main);
+  color: var(--accent-green);
+  font-family: var(--font-heading);
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  
+  /* Fix it to the top left so it covers everything while checking auth */
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 50; 
+}
