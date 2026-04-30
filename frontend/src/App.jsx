@@ -20,15 +20,8 @@ export default function App() {
                 <Route path="/about" element={<About />} />
                 <Route path="/signup" element={<SignupPage />} />
                 <Route path="/login" element={<AuthPage />} />
+                <Route path="/dashboard" element={<Dashboard />} />
                 {/* Protected Routes */}
-                <Route
-                    path="/dashboard"
-                    element={
-                        <ProtectedRoute>
-                            <Dashboard />
-                        </ProtectedRoute>
-                    }
-                />
             </Routes>
         </Authenticator.Provider>
     );
