@@ -2,7 +2,7 @@ import { useAuthenticator } from '@aws-amplify/ui-react';
 import { signInWithRedirect } from 'aws-amplify/auth';
 import { useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
-import styles from './SignUpPage.module.css';
+import styles from './SignupPage.module.css';
 
 const GoogleIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">

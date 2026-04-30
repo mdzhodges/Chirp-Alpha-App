@@ -18,7 +18,7 @@ apt-get install -y --no-install-recommends \
   python3-venv \
   python3-pip \
   software-properties-common \
-  add-apt-reposal \
+  libgl1 \
   gnupg \
   ca-certificates \
   wget

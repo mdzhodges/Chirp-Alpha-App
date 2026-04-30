@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useTickerData } from '../../hooks/UseTickerData';
+import { useMemo, useState } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -10,14 +9,15 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
-import { Line } from 'react-chartjs-2';
-import styles from './Dashboard.module.css';
-import StockTwitsFeed from '../../components/StockTwitsFeed/StockTwitsFeed'
+
+import { useTickerData } from '../../hooks/UseTickerData';
+import StockTwitsFeed from '../../components/StockTwitsFeed/StockTwitsFeed';
 import TickerCard from '../../components/TickerCard/TickerCard';
 import MomentumCard from '../../components/MomentumCard/MomentumCard';
 import SearchForm from '../../components/SearchForm/SearchForm';
-import FeedToggleButton from '../../components/FeedToggleButton/FeedToggleButton';
 import PriceChart from '../../components/PriceChart/PriceChart';
+
+import styles from './Dashboard.module.css';
 
 ChartJS.register(
   CategoryScale,
@@ -29,70 +29,143 @@ ChartJS.register(
   Legend
 );
 
+const TABS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'chart', label: 'Chart' },
+  { id: 'feed', label: 'Feed' },
+];
+
 export default function Dashboard() {
   const [symbol, setSymbol] = useState('AAPL');
   const [querySymbol, setQuerySymbol] = useState('AAPL');
-  const [isFeedOpen, setIsFeedOpen] = useState(true); // tweets show when true
+  const [activeTab, setActiveTab] = useState('overview');
 
   const { status, error, ticker, history } = useTickerData(querySymbol);
 
   const momentumNumber = ticker?.momentum ?? 0;
-  const momentumDirection = momentumNumber > 0.1 ? 'up' : momentumNumber < -0.1 ? 'down' : 'neutral';
+  const momentumDirection = useMemo(() => {
+    if (momentumNumber > 0.1) return 'up';
+    if (momentumNumber < -0.1) return 'down';
+    return 'neutral';
+  }, [momentumNumber]);
+
+  const change = Number(ticker?.change ?? 0);
+  const changePercent = Number(ticker?.changePercent ?? 0);
+  const isUp = change >= 0;
+
+  const priceFormatted = useMemo(() => {
+    if (ticker?.price == null) return '—';
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: /^[A-Z]{3}$/.test(ticker.currency || '') ? ticker.currency : 'USD',
+      maximumFractionDigits: 2,
+    }).format(Number(ticker.price));
+  }, [ticker?.price, ticker?.currency]);
 
   return (
-    <div className={styles.splitScreenContainer}>
-      
-      {/* --- LEFT COLUMN --- */}
-      <div className={`${styles.leftColumn} ${isFeedOpen ? styles.leftColumnSplit : styles.leftColumnFull}`}>
-        <div className={styles.container}>
-          
-          <div style={{ marginBottom: '2rem' }}>
-            <div className={styles.header}>
-              <div className={styles.badge}>Dashboard</div>
-              <h1 className={styles.title} style={{ margin: 0 }}>Momentum Analysis</h1>
-            </div>
+    <div className={styles.page}>
+      {/* HERO STRIP: symbol, price, change. The thing you look at first. */}
+      <header className={styles.hero}>
+        <div className={styles.heroLeft}>
+          <div className={styles.heroSymbol}>{ticker?.symbol || querySymbol}</div>
+          <div className={styles.heroName}>{ticker?.name || ''}</div>
+          <div className={styles.heroMeta}>
+            {ticker?.exchange ? `${ticker.exchange} · ` : ''}
+            {ticker?.currency || 'USD'}
+            {ticker?.fetchedAt && (
+              <span className={styles.heroDot}>
+                · updated {new Date(ticker.fetchedAt).toLocaleTimeString()}
+              </span>
+            )}
           </div>
-
-          <MomentumCard 
-            momentumNumber={momentumNumber} 
-            momentumDirection={momentumDirection} 
-            styles={styles} 
-          />
-
-          <SearchForm 
-            symbol={symbol}
-            setSymbol={setSymbol}
-            setQuerySymbol={setQuerySymbol}
-            status={status}
-            styles={styles}
-          />
-
-          {status === 'error' && (
-            <div className={styles.error}>
-              <strong>Failed to load ticker:</strong> {error}
-            </div>
-          )}
-
-          {ticker && <TickerCard ticker={ticker} styles={styles} />}
-          {history && <PriceChart history={history} ticker={ticker} styles={styles} />}
-
         </div>
-      </div>
-      {/* --- END LEFT COLUMN --- */}
 
-      {/* --- RIGHT COLUMN --- */}
-      <div className={`${styles.rightColumn} ${isFeedOpen ? styles.rightColumnOpen : styles.rightColumnClosed}`}>
-        <div className={styles.feedInnerWrapper}>
-          <StockTwitsFeed symbol={querySymbol} />
+        <div className={styles.heroRight}>
+          <div className={styles.heroPrice}>{priceFormatted}</div>
+          <div
+            className={`${styles.heroChange} ${
+              isUp ? styles.heroChangeUp : styles.heroChangeDown
+            }`}
+          >
+            <span className={styles.heroChangeArrow}>{isUp ? '▲' : '▼'}</span>
+            {ticker?.change == null ? '—' : Math.abs(change).toFixed(2)}
+            {ticker?.changePercent != null && (
+              <span className={styles.heroChangePct}>
+                ({Math.abs(changePercent).toFixed(2)}%)
+              </span>
+            )}
+          </div>
         </div>
+      </header>
+
+      {/* SEARCH + TABS row */}
+      <div className={styles.controls}>
+        <SearchForm
+          symbol={symbol}
+          setSymbol={setSymbol}
+          setQuerySymbol={setQuerySymbol}
+          status={status}
+        />
+
+        <nav className={styles.tabBar} role="tablist">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              className={`${styles.tab} ${activeTab === tab.id ? styles.tabActive : ''}`}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
       </div>
 
-      {/* --- THE FLOATING TAB --- */}
-      <FeedToggleButton 
-        isOpen={isFeedOpen} 
-        onToggle={() => setIsFeedOpen(!isFeedOpen)} 
-      />
+      {status === 'error' && (
+        <div className={styles.error}>
+          <strong>Failed to load ticker:</strong> {error}
+        </div>
+      )}
 
+      {/* TAB PANELS */}
+      <main className={styles.panel}>
+        {activeTab === 'overview' && (
+          <div className={styles.overviewGrid}>
+            <section className={styles.overviewMain}>
+              <MomentumCard
+                momentumNumber={momentumNumber}
+                momentumDirection={momentumDirection}
+              />
+              {history && (
+                <div className={styles.chartWrap}>
+                  <PriceChart history={history} ticker={ticker} />
+                </div>
+              )}
+            </section>
+
+            <aside className={styles.overviewSide}>
+              {ticker && <TickerCard ticker={ticker} />}
+            </aside>
+          </div>
+        )}
+
+        {activeTab === 'chart' && (
+          <div className={styles.chartFull}>
+            {history ? (
+              <PriceChart history={history} ticker={ticker} />
+            ) : (
+              <div className={styles.empty}>No price history available.</div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'feed' && (
+          <div className={styles.feedFull}>
+            <StockTwitsFeed symbol={querySymbol} />
+          </div>
+        )}
+      </main>
     </div>
   );
 }

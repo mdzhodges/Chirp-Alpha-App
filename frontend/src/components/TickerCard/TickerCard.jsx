@@ -1,6 +1,19 @@
 import { useMemo } from 'react';
 import styles from './TickerCards.module.css';
 
+/**
+ * Renders a single stat row.
+ * Pulled out so the markup stays readable when grouped into sections.
+ */
+function Stat({ label, value }) {
+  return (
+    <div className={styles.statItem}>
+      <div className={styles.statLabel}>{label}</div>
+      <div className={styles.statValue}>{value}</div>
+    </div>
+  );
+}
+
 export default function TickerCard({ ticker }) {
   const currencyCode = useMemo(() => {
     const value = ticker?.currency ?? '';
@@ -8,10 +21,7 @@ export default function TickerCard({ ticker }) {
   }, [ticker?.currency]);
 
   const numberFormat = useMemo(
-    () =>
-      new Intl.NumberFormat(undefined, {
-        maximumFractionDigits: 4,
-      }),
+    () => new Intl.NumberFormat(undefined, { maximumFractionDigits: 4 }),
     []
   );
 
@@ -47,143 +57,52 @@ export default function TickerCard({ ticker }) {
 
   if (!ticker) return null;
 
+  // Tiny helpers so JSX below stays clean
+  const cur = (v) => (v == null ? '—' : currencyFormat.format(Number(v)));
+  const num = (v) => (v == null ? '—' : numberFormat.format(Number(v)));
+  const pct = (v) => (v == null ? '—' : percentFormat.format(Number(v)));
+  const big = (v) => (v == null ? '—' : compactFormat.format(Number(v)));
+  const range = (lo, hi) =>
+    lo == null || hi == null ? '—' : `${cur(lo)} – ${cur(hi)}`;
+
   return (
     <div className={styles.tickerCard}>
-      <div className={styles.tickerHeader}>
-        <div>
-          <div className={styles.tickerSymbol}>{ticker.symbol}</div>
-          <div className={styles.tickerName}>{ticker.name || ''}</div>
-          <div className={styles.tickerMeta}>
-            {ticker.exchange ? `${ticker.exchange} · ` : ''}
-            {ticker.currency || 'USD'}
-            {ticker.fetchedAt ? ` · fetched ${new Date(ticker.fetchedAt).toLocaleString()}` : ''}
-          </div>
+      {/* TRADING */}
+      <section className={styles.section}>
+        <h3 className={styles.sectionTitle}>Trading</h3>
+        <div className={styles.statsGrid}>
+          <Stat label="Open" value={cur(ticker.open)} />
+          <Stat label="Prev Close" value={cur(ticker.previousClose)} />
+          <Stat label="Day Range" value={range(ticker.dayLow, ticker.dayHigh)} />
+          <Stat label="52W Range" value={range(ticker.yearLow, ticker.yearHigh)} />
+          <Stat label="Volume" value={big(ticker.volume)} />
+          <Stat label="Avg Volume" value={big(ticker.avgVolume)} />
         </div>
-        <div>
-          <div className={styles.tickerPrice}>
-            {ticker.price == null ? '—' : currencyFormat.format(Number(ticker.price))}
-          </div>
-          <div
-            className={`${styles.tickerChange} ${
-              Number(ticker.change) >= 0 ? styles.tickerChangePositive : styles.tickerChangeNegative
-            }`}
-          >
-            {ticker.change == null ? '—' : numberFormat.format(Number(ticker.change))}
-            {ticker.changePercent == null
-              ? ''
-              : ` (${numberFormat.format(Number(ticker.changePercent))}%)`}
-          </div>
-        </div>
-      </div>
+      </section>
 
-      <div className={styles.statsGrid}>
-        <div className={styles.statItem}>
-          <div className={styles.statLabel}>Open</div>
-          <div className={styles.statValue}>
-            {ticker.open == null ? '—' : currencyFormat.format(Number(ticker.open))}
-          </div>
+      {/* VALUATION */}
+      <section className={styles.section}>
+        <h3 className={styles.sectionTitle}>Valuation</h3>
+        <div className={styles.statsGrid}>
+          <Stat label="Market Cap" value={big(ticker.marketCap)} />
+          <Stat label="Enterprise Value" value={big(ticker.enterpriseValue)} />
+          <Stat label="Trailing P/E" value={num(ticker.pe)} />
+          <Stat label="Forward P/E" value={num(ticker.forwardPE)} />
+          <Stat label="Price/Book" value={num(ticker.priceToBook)} />
+          <Stat label="Beta (5Y)" value={num(ticker.beta)} />
         </div>
-        <div className={styles.statItem}>
-          <div className={styles.statLabel}>Prev Close</div>
-          <div className={styles.statValue}>
-            {ticker.previousClose == null ? '—' : currencyFormat.format(Number(ticker.previousClose))}
-          </div>
+      </section>
+
+      {/* FUNDAMENTALS */}
+      <section className={styles.section}>
+        <h3 className={styles.sectionTitle}>Fundamentals</h3>
+        <div className={styles.statsGrid}>
+          <Stat label="EPS (TTM)" value={num(ticker.eps)} />
+          <Stat label="Dividend Yield" value={pct(ticker.dividendYield)} />
+          <Stat label="Profit Margin" value={pct(ticker.profitMargins)} />
+          <Stat label="Shares Out." value={big(ticker.sharesOutstanding)} />
         </div>
-        <div className={styles.statItem}>
-          <div className={styles.statLabel}>Day Range</div>
-          <div className={styles.statValue}>
-            {ticker.dayLow == null || ticker.dayHigh == null
-              ? '—'
-              : `${currencyFormat.format(Number(ticker.dayLow))} – ${currencyFormat.format(Number(ticker.dayHigh))}`}
-          </div>
-        </div>
-        <div className={styles.statItem}>
-          <div className={styles.statLabel}>52W Range</div>
-          <div className={styles.statValue}>
-            {ticker.yearLow == null || ticker.yearHigh == null
-              ? '—'
-              : `${currencyFormat.format(Number(ticker.yearLow))} – ${currencyFormat.format(Number(ticker.yearHigh))}`}
-          </div>
-        </div>
-        <div className={styles.statItem}>
-          <div className={styles.statLabel}>Volume</div>
-          <div className={styles.statValue}>
-            {ticker.volume == null ? '—' : compactFormat.format(Number(ticker.volume))}
-          </div>
-        </div>
-        <div className={styles.statItem}>
-          <div className={styles.statLabel}>Avg Volume</div>
-          <div className={styles.statValue}>
-            {ticker.avgVolume == null ? '—' : compactFormat.format(Number(ticker.avgVolume))}
-          </div>
-        </div>
-        <div className={styles.statItem}>
-          <div className={styles.statLabel}>Market Cap</div>
-          <div className={styles.statValue}>
-            {ticker.marketCap == null ? '—' : compactFormat.format(Number(ticker.marketCap))}
-          </div>
-        </div>
-        <div className={styles.statItem}>
-          <div className={styles.statLabel}>Enterprise Value</div>
-          <div className={styles.statValue}>
-            {ticker.enterpriseValue == null ? '—' : compactFormat.format(Number(ticker.enterpriseValue))}
-          </div>
-        </div>
-        <div className={styles.statItem}>
-          <div className={styles.statLabel}>Trailing P/E</div>
-          <div className={styles.statValue}>
-            {ticker.pe == null ? '—' : numberFormat.format(Number(ticker.pe))}
-          </div>
-        </div>
-        <div className={styles.statItem}>
-          <div className={styles.statLabel}>Forward P/E</div>
-          <div className={styles.statValue}>
-            {ticker.forwardPE == null ? '—' : numberFormat.format(Number(ticker.forwardPE))}
-          </div>
-        </div>
-        <div className={styles.statItem}>
-          <div className={styles.statLabel}>EPS (TTM)</div>
-          <div className={styles.statValue}>
-            {ticker.eps == null ? '—' : numberFormat.format(Number(ticker.eps))}
-          </div>
-        </div>
-        <div className={styles.statItem}>
-          <div className={styles.statLabel}>Dividend Yield</div>
-          <div className={styles.statValue}>
-            {ticker.dividendYield == null ? '—' : percentFormat.format(Number(ticker.dividendYield))}
-          </div>
-        </div>
-        <div className={styles.statItem}>
-          <div className={styles.statLabel}>Beta (5Y)</div>
-          <div className={styles.statValue}>
-            {ticker.beta == null ? '—' : numberFormat.format(Number(ticker.beta))}
-          </div>
-        </div>
-        <div className={styles.statItem}>
-          <div className={styles.statLabel}>Price/Book</div>
-          <div className={styles.statValue}>
-            {ticker.priceToBook == null ? '—' : numberFormat.format(Number(ticker.priceToBook))}
-          </div>
-        </div>
-        <div className={styles.statItem}>
-          <div className={styles.statLabel}>Profit Margin</div>
-          <div className={styles.statValue}>
-            {ticker.profitMargins == null ? '—' : percentFormat.format(Number(ticker.profitMargins))}
-          </div>
-        </div>
-        <div className={styles.statItem}>
-          <div className={styles.statLabel}>Chirp Momentum</div>
-          <div className={`${styles.statValue} ${Number(ticker.momentum) >= 0 ? styles.tickerChangePositive : styles.tickerChangeNegative}`}>
-            {ticker.momentum == null ? '—' : numberFormat.format(Number(ticker.momentum))}
-          </div>
-        </div>
-        <div className={styles.statItem}>
-          <div className={styles.statLabel}>Shares Out.</div>
-          <div className={styles.statValue}>
-            {ticker.sharesOutstanding == null ? '—' : compactFormat.format(Number(ticker.sharesOutstanding))}
-          </div>
-        </div>
-      </div>
+      </section>
     </div>
   );
 }

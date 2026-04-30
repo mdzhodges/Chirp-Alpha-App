@@ -203,17 +203,24 @@ def _load_tweet_embedding_index(path: str):
     return cached
 
 
-def _align_tweet_embeddings(df: pd.DataFrame, embeddings: torch.Tensor, counts: torch.Tensor, key_to_idx: dict):
+def _align_tweet_embeddings(df: pd.DataFrame, embeddings: torch.Tensor, counts: torch.Tensor, mapping_df: pd.DataFrame):
+    print("Aligning embeddings...")
+    df_keys = df[['ticker', 'Date']].astype(str)
+    merged = df_keys.merge(mapping_df, on=['ticker', 'Date'], how='left')
+    
+    idxs = merged['embed_idx'].values
+    
     n = len(df)
     hidden = int(embeddings.shape[1])
     aligned = torch.zeros((n, hidden), dtype=torch.float32)
     aligned_counts = torch.zeros((n,), dtype=torch.int64)
 
-    for i, (ticker, date) in enumerate(zip(df["ticker"].astype(str).tolist(), df["Date"].astype(str).tolist())):
-        j = key_to_idx.get((ticker, date), -1)
-        if j >= 0:
-            aligned[i] = embeddings[j]
-            aligned_counts[i] = counts[j]
+    valid_mask = ~np.isnan(idxs)
+    valid_idxs = idxs[valid_mask].astype(int)
+    
+    aligned[valid_mask] = embeddings[valid_idxs]
+    aligned_counts[valid_mask] = counts[valid_idxs]
+    
     return aligned, aligned_counts
 
 
@@ -243,21 +250,24 @@ def _read_parquet_tail(path: str, sample_size: int) -> pd.DataFrame:
 
 
 def _get_data():
+    import polars as pl
+    parquet_path = f"{DATA_PATH}/data.parquet"
+    
     if DATA_FORMAT == "parquet":
-        parquet_path = f"{DATA_PATH}/data.parquet"
         if not os.path.exists(parquet_path):
              raise FileNotFoundError(f"Parquet not found: {parquet_path}")
         
+        print(f"Loading data from {parquet_path} using Polars...")
         if FULL_DATA:
-            data = pd.read_parquet(parquet_path)
+            data = pl.read_parquet(parquet_path).to_pandas()
         else:
-            data = _read_parquet_tail(parquet_path, SAMPLE_SIZE)
+            data = pl.scan_parquet(parquet_path).tail(SAMPLE_SIZE).collect().to_pandas()
     else:
         jsonl_path = f"{DATA_PATH}/data.jsonl"
-        if FULL_DATA:
-            data = pd.read_json(jsonl_path, lines=True)
-        else:
-            data = pd.read_json(jsonl_path, lines=True).tail(SAMPLE_SIZE).reset_index(drop=True)
+        print(f"Loading data from {jsonl_path} using Pandas...")
+        data = pd.read_json(jsonl_path, lines=True)
+        if not FULL_DATA:
+            data = data.tail(SAMPLE_SIZE).reset_index(drop=True)
     
     if not FULL_DATA:
         data = data.sort_values("Date").tail(SAMPLE_SIZE).reset_index(drop=True)
@@ -328,10 +338,10 @@ def walkforward(lr:float, dropout:float, l1_lambda:float):
         val_tweet_emb = val_tweet_counts = None
         test_tweet_emb = test_tweet_counts = None
         if tweet_index is not None:
-            embeddings, counts, key_to_idx = tweet_index
-            train_tweet_emb, train_tweet_counts = _align_tweet_embeddings(train_df, embeddings, counts, key_to_idx)
-            val_tweet_emb, val_tweet_counts = _align_tweet_embeddings(val_df, embeddings, counts, key_to_idx)
-            test_tweet_emb, test_tweet_counts = _align_tweet_embeddings(test_df, embeddings, counts, key_to_idx)
+            embeddings, counts, mapping_df = tweet_index
+            train_tweet_emb, train_tweet_counts = _align_tweet_embeddings(train_df, embeddings, counts, mapping_df)
+            val_tweet_emb, val_tweet_counts = _align_tweet_embeddings(val_df, embeddings, counts, mapping_df)
+            test_tweet_emb, test_tweet_counts = _align_tweet_embeddings(test_df, embeddings, counts, mapping_df)
 
         trainer = Trainer(
             train_stock=train_stock,
@@ -401,7 +411,6 @@ def run_experiment(params):
     
     last_fold = results[-1]
 
-    # Save per-fold results for this combo
     combo_dir = f"graphs/{lr}_{dr}_{l1}"
     os.makedirs(combo_dir, exist_ok=True)
     folds_df = pd.DataFrame(results, columns=['Huber', 'L1', 'R2', 'Accuracy', 'Up_Accuracy', 'Down_Accuracy'])
@@ -426,16 +435,16 @@ def run_experiment(params):
 
 
 def main():
-    learning_rates = [1e-5, 5e-6, 1e-6]
-    dropout_rates = [0.1, 0.2]
-    l1_lambdas = [1e-3, 5e-3]
+    learning_rates = [5e-6]
+    dropout_rates = [0.1]
+    l1_lambdas = [1e-3]
     
     combos = [(lr, dr, l1) for lr in learning_rates for dr in dropout_rates for l1 in l1_lambdas]
     
     summary_results = []
     
 
-    max_workers = 12
+    max_workers = 1
     
     print(f"Parallelizing {len(combos)} experiments across {max_workers} workers...")
     
@@ -500,7 +509,7 @@ if __name__ == "__main__":
         main()
     else:
         # Default: run preprocessing first, then training
-        run_preprocessing()
+        # run_preprocessing()
         print("\n" + "="*50 + "\n")
         torch.multiprocessing.set_start_method('spawn', force=True)
         main()
