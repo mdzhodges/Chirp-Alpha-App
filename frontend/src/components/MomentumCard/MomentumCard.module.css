@@ -63,6 +63,24 @@
   background-color: rgba(161, 161, 170, 0.1);
   color: var(--text-muted);
 }
+
+/* ---------- LOADING STATES ---------- */
+.skeletonText {
+  color: rgba(255, 255, 255, 0.1);
+  animation: pulseOpacity 1.5s infinite ease-in-out;
+}
+
+.skeletonLabel {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.3);
+  animation: pulseOpacity 1.5s infinite ease-in-out;
+}
+
+@keyframes pulseOpacity {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
 /* ---------- MODEL STATS ---------- */
 .statsGrid {
   display: flex;

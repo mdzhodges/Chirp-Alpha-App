@@ -40,8 +40,9 @@ export default function Dashboard() {
   const [searchParams] = useSearchParams();
   const querySymbol = searchParams.get("s") || "AAPL";
   const [modelType, setModelType] = useState("balanced");
+  const [chartMode, setChartMode] = useState("candlestick"); // 'candlestick' or 'comparison'
 
-  const { status, error, ticker, history } = useTickerData(querySymbol, modelType);
+  const { status, momentumStatus, error, ticker, history } = useTickerData(querySymbol, modelType);
 
   const descriptionParagraphs = useMemo(() => {
     if (!ticker?.description) return [];
@@ -180,6 +181,14 @@ export default function Dashboard() {
       <div className={styles.dashboardGrid}>
         {/* Left: Huge Chart */}
         <section className={styles.chartSection}>
+          {momentumStatus === "loading" && (
+            <div className={styles.signalsContainer}>
+              <div className={styles.signalLoading}>
+                <span className={styles.signalIcon}>⌛</span>
+                Calculating Alpha Momentum & AI Signals...
+              </div>
+            </div>
+          )}
           {ticker?.signals && ticker.signals.length > 0 && (
             <div className={styles.signalsContainer}>
               {ticker.signals.map((sig, idx) => (
@@ -192,12 +201,34 @@ export default function Dashboard() {
           )}
           <div className={styles.card}>
             {history ? (
-              <PriceChart history={history} ticker={ticker} />
+              <PriceChart 
+                key={`${chartMode}-${querySymbol}-${modelType}`} 
+                history={history} 
+                ticker={ticker} 
+                mode={chartMode}
+              />
             ) : (
               <div className={styles.loadingState}>
                 {status === "loading" ? "Analyzing Market Cycles..." : "Search for a ticker to begin"}
               </div>
             )}
+
+            <div className={styles.chartControls}>
+              <div className={styles.modelGrid}>
+                <button
+                  className={`${styles.modelBtn} ${chartMode === "candlestick" ? styles.modelBtnActive : ""}`}
+                  onClick={() => setChartMode("candlestick")}
+                >
+                  Candles
+                </button>
+                <button
+                  className={`${styles.modelBtn} ${chartMode === "comparison" ? styles.modelBtnActive : ""}`}
+                  onClick={() => setChartMode("comparison")}
+                >
+                  Momentum
+                </button>
+              </div>
+            </div>
           </div>
 
           {descriptionParagraphs.length > 0 && (
@@ -227,6 +258,7 @@ export default function Dashboard() {
               momentumNumber={momentumNumber}
               momentumDirection={momentumDirection}
               modelStats={ticker?.modelStats}
+              isLoading={momentumStatus === "loading"}
             />
             
             <div className={styles.statsCard}>

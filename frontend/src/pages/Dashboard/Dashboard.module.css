@@ -180,6 +180,8 @@
   border-radius: 4px;
   padding: 1rem;
   min-height: 500px;
+  display: flex;
+  flex-direction: column;
 }
 
 .statsCard {
@@ -194,6 +196,12 @@
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 4px;
   padding: 1rem;
+}
+
+.chartControls {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 1rem;
 }
 
 .descriptionCard {
@@ -268,6 +276,31 @@
   align-items: center;
   gap: 0.6rem;
   animation: slideIn 0.3s ease-out;
+}
+
+.signalLoading {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-left: 3px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-muted);
+  padding: 0.5rem 1rem;
+  border-radius: 2px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  animation: fadeIn 0.4s ease-out, pulseOpacity 2s infinite ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulseOpacity {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
 }
 
 .signalIcon {

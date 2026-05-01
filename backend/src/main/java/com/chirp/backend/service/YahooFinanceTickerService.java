@@ -46,8 +46,8 @@ public class YahooFinanceTickerService {
         this.logoDevApiKey = logoDevApiKey;
     }
 
-    public TickerResponse fetch(String symbol, String modelType) {
-        log.debug("Fetching ticker data for: {}", symbol);
+    public TickerResponse fetch(String symbol, String modelType, boolean skipMomentum) {
+        log.debug("Fetching ticker data for: {} (skipMomentum={})", symbol, skipMomentum);
 
         JsonNode chartRoot = fetchChartDataWithRetry(symbol);
         JsonNode result = chartRoot.path("chart").path("result").get(0);
@@ -63,23 +63,26 @@ public class YahooFinanceTickerService {
         BigDecimal currentMomentum = BigDecimal.ZERO;
         List<TickerResponse.MomentumPoint> momentumHistory = new ArrayList<>();
         List<String> signals = new ArrayList<>();
-        try {
-            MomentumData momentumData = fetchMomentumData(symbol, modelType);
-            if (momentumData != null) {
-                currentMomentum = momentumData.current;
-                momentumHistory = momentumData.history;
-                signals = momentumData.signals;
+        
+        if (!skipMomentum) {
+            try {
+                MomentumData momentumData = fetchMomentumData(symbol, modelType);
+                if (momentumData != null) {
+                    currentMomentum = momentumData.current;
+                    momentumHistory = momentumData.history;
+                    signals = momentumData.signals;
+                }
+            } catch (Exception e) {
+                log.error("Failed to fetch momentum for {}: {}", symbol, e.getMessage());
             }
-        } catch (Exception e) {
-            log.error("Failed to fetch momentum for {}: {}", symbol, e.getMessage());
         }
 
         return mapToTickerResponse(symbol, meta, summary, graphData, currentMomentum, momentumHistory, getModelStats(modelType), signals);
     }
 
-    private record MomentumData(BigDecimal current, List<TickerResponse.MomentumPoint> history, List<String> signals) {}
+    public record MomentumData(BigDecimal current, List<TickerResponse.MomentumPoint> history, List<String> signals) {}
 
-    private MomentumData fetchMomentumData(String symbol, String modelType) {
+    public MomentumData fetchMomentumData(String symbol, String modelType) {
         JsonNode stockHistory = fetchDailyChartData(symbol, "120d");
         Map<String, JsonNode> marketHistory = new HashMap<>();
         for (String m : List.of("SPY", "QQQ", "DIA", "^VIX")) {
@@ -114,8 +117,9 @@ public class YahooFinanceTickerService {
         // Current prediction with signals
         MomentumGrpcClient.PredictionResult singlePred = momentumClient.predictMomentum(symbol, stockOhlcv, marketOhlcv, tweets, 0, modelType);
 
-        // We want a trend for the last 10 trading days
-        List<Integer> offsets = List.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+        // We want a trend for the last 30 trading days
+        List<Integer> offsets = new ArrayList<>();
+        for (int i = 0; i <= 30; i++) offsets.add(i);
         List<Float> preds = momentumClient.batchPredictMomentum(symbol, stockOhlcv, marketOhlcv, tweets, offsets, modelType);
 
         List<TickerResponse.MomentumPoint> historyPoints = new ArrayList<>();
@@ -135,7 +139,7 @@ public class YahooFinanceTickerService {
     private JsonNode fetchDailyChartData(String symbol, String range) {
         return executeWithRetry(symbol, "chart-daily", (s, isRetry) -> {
             String encodedSymbol = URLEncoder.encode(s, StandardCharsets.UTF_8);
-            String url = String.format("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=1d&range=%s&crumb=%s",
+            String url = String.format("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=1d&range=%s&includePrePost=true&crumb=%s",
                     encodedSymbol, range, authService.getCrumb());
             return buildRequest(url);
         });
@@ -177,7 +181,7 @@ public class YahooFinanceTickerService {
     private JsonNode fetchChartDataWithRetry(String symbol) {
         return executeWithRetry(symbol, "chart", (s, isRetry) -> {
             String encodedSymbol = URLEncoder.encode(s, StandardCharsets.UTF_8);
-            String url = String.format("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=60m&range=5d&crumb=%s",
+            String url = String.format("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=60m&range=7d&includePrePost=true&crumb=%s",
                     encodedSymbol, authService.getCrumb());
             return buildRequest(url);
         });

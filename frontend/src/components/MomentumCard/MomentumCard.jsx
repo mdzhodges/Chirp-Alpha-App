@@ -1,30 +1,34 @@
 import styles from './MomentumCard.module.css'
 
-export default function MomentumCard({ momentumNumber, momentumDirection, modelStats }) {
+export default function MomentumCard({ momentumNumber, momentumDirection, modelStats, isLoading }) {
   return (
-    <div className={styles.momentumCard}>
+    <div className={`${styles.momentumCard} ${isLoading ? styles.isLoading : ''}`}>
       <div className={styles.momentumLabel}>Predicted Momentum Score</div>
       <div
         className={`${styles.momentumValue} ${
-          momentumDirection === 'up'
+          isLoading 
+            ? styles.skeletonText
+            : momentumDirection === 'up'
             ? styles.momentumValueUp
             : momentumDirection === 'down'
             ? styles.momentumValueDown
             : styles.momentumValueNeutral
         }`}
       >
-        {momentumNumber.toFixed(2)}
+        {isLoading ? '--.--' : momentumNumber.toFixed(2)}
       </div>
       <span
         className={`${styles.momentumDirection} ${
-          momentumDirection === 'up'
+          isLoading
+            ? styles.skeletonLabel
+            : momentumDirection === 'up'
             ? styles.momentumDirectionUp
             : momentumDirection === 'down'
             ? styles.momentumDirectionDown
             : styles.momentumDirectionNeutral
         }`}
       >
-        {momentumDirection === 'up' ? 'Bullish' : momentumDirection === 'down' ? 'Bearish' : 'Neutral'}
+        {isLoading ? 'Analyzing...' : (momentumDirection === 'up' ? 'Bullish' : momentumDirection === 'down' ? 'Bearish' : 'Neutral')}
       </span>
     
       {modelStats && (

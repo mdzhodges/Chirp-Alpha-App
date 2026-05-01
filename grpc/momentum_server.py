@@ -561,7 +561,7 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
             if market_feats.empty:
                 return momentum_pb2.MomentumResponse(momentum=0.0)
 
-            offset = request.offset if request.offset != 0 else 5
+            offset = request.offset
             text_feat = self._text_feature(request.tweets)
 
             # Calculate individual predictions for signal detection
