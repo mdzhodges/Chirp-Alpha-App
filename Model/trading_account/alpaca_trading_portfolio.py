@@ -14,8 +14,7 @@ class AlpacaTradingPortfolio:
 
     def __init__(self, trading_client: TradingClient) -> None:
         self._trading_client: TradingClient = trading_client
-        self._alpaca_api_key = os.getenv("ALPACA_API_KEY", "")
-        self._alpaca_api_key_secret = os.getenv("ALPACA_API_KEY_SECRET", "")
+
 
     def get_account_dict(self) -> dict[str, Any]:
 
