@@ -75,3 +75,24 @@
   font-size: 0.75rem;
   white-space: nowrap; /* Prevents the date from wrapping to two lines */
 }
+
+.loadMore {
+  background: var(--bg-main);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-main);
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+  align-self: center;
+  margin-top: 0.5rem;
+}
+
+.loadMore:hover {
+  background: var(--bg-secondary);
+  border-color: var(--accent-green);
+  color: var(--accent-green);
+}

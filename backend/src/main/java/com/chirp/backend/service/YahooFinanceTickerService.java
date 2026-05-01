@@ -62,20 +62,22 @@ public class YahooFinanceTickerService {
 
         BigDecimal currentMomentum = BigDecimal.ZERO;
         List<TickerResponse.MomentumPoint> momentumHistory = new ArrayList<>();
+        List<String> signals = new ArrayList<>();
         try {
             MomentumData momentumData = fetchMomentumData(symbol, modelType);
             if (momentumData != null) {
                 currentMomentum = momentumData.current;
                 momentumHistory = momentumData.history;
+                signals = momentumData.signals;
             }
         } catch (Exception e) {
             log.error("Failed to fetch momentum for {}: {}", symbol, e.getMessage());
         }
 
-        return mapToTickerResponse(symbol, meta, summary, graphData, currentMomentum, momentumHistory, getModelStats(modelType));
+        return mapToTickerResponse(symbol, meta, summary, graphData, currentMomentum, momentumHistory, getModelStats(modelType), signals);
     }
 
-    private record MomentumData(BigDecimal current, List<TickerResponse.MomentumPoint> history) {}
+    private record MomentumData(BigDecimal current, List<TickerResponse.MomentumPoint> history, List<String> signals) {}
 
     private MomentumData fetchMomentumData(String symbol, String modelType) {
         JsonNode stockHistory = fetchDailyChartData(symbol, "120d");
@@ -109,6 +111,9 @@ public class YahooFinanceTickerService {
             marketOhlcv.put(s, convertToOhlcv(node.path("chart").path("result").get(0)));
         });
 
+        // Current prediction with signals
+        MomentumGrpcClient.PredictionResult singlePred = momentumClient.predictMomentum(symbol, stockOhlcv, marketOhlcv, tweets, 0, modelType);
+
         // We want a trend for the last 10 trading days
         List<Integer> offsets = List.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
         List<Float> preds = momentumClient.batchPredictMomentum(symbol, stockOhlcv, marketOhlcv, tweets, offsets, modelType);
@@ -122,8 +127,9 @@ public class YahooFinanceTickerService {
             }
         }
 
-        BigDecimal current = preds.isEmpty() ? BigDecimal.ZERO : BigDecimal.valueOf(preds.get(0));
-        return new MomentumData(current, historyPoints);
+        BigDecimal current = singlePred != null ? BigDecimal.valueOf(singlePred.momentum()) : (preds.isEmpty() ? BigDecimal.ZERO : BigDecimal.valueOf(preds.get(0)));
+        List<String> signals = singlePred != null ? singlePred.signals() : new ArrayList<>();
+        return new MomentumData(current, historyPoints, signals);
     }
 
     private JsonNode fetchDailyChartData(String symbol, String range) {
@@ -272,7 +278,7 @@ public class YahooFinanceTickerService {
         return points;
     }
 
-    private TickerResponse mapToTickerResponse(String symbol, JsonNode meta, JsonNode summary, List<GraphPoint> graphData, BigDecimal momentum, List<TickerResponse.MomentumPoint> momentumHistory, TickerResponse.ModelStats modelStats) {
+    private TickerResponse mapToTickerResponse(String symbol, JsonNode meta, JsonNode summary, List<GraphPoint> graphData, BigDecimal momentum, List<TickerResponse.MomentumPoint> momentumHistory, TickerResponse.ModelStats modelStats, List<String> signals) {
         JsonNode quoteRes = summary.path("quoteSummary").path("result").get(0);
         JsonNode priceMod = quoteRes.path("price");
         JsonNode summaryDetail = quoteRes.path("summaryDetail");
@@ -281,6 +287,7 @@ public class YahooFinanceTickerService {
     
         String website = assetProfile.path("website").asText(null);
         String companyName = priceMod.path("longName").asText(null);
+        String description = assetProfile.path("longBusinessSummary").asText(null);
     
         String domain = null;
         if (website != null && !website.isEmpty()) {
@@ -320,6 +327,8 @@ public class YahooFinanceTickerService {
                 momentumHistory,
                 graphData,
                 modelStats,
+                signals,
+                description,
                 logoUrl,
                 Instant.now()
         );

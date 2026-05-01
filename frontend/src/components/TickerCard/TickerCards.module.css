@@ -5,28 +5,28 @@
 .tickerCard {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  padding: 1rem;
+  gap: 0.5rem;
+  padding: 0.75rem;
   background: var(--bg-secondary);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 14px;
+  border-radius: 4px;
 }
 
 .section {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.5rem;
 }
 
 .sectionTitle {
   font-family: var(--font-heading);
   font-weight: 500;
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-muted);
   margin: 0;
-  padding-bottom: 0.5rem;
+  padding-bottom: 0.4rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
@@ -34,15 +34,15 @@
 .statsGrid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 0.5rem 1rem;
+  gap: 0.35rem 1rem;
 }
 
 .statItem {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.25rem 0;
+  gap: 0.5rem;
+  padding: 0.15rem 0;
   min-width: 0;
 }
 

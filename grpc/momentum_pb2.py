@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0emomentum.proto\x12\x08momentum\"\x99\x02\n\x14\x42\x61tchMomentumRequest\x12\x0e\n\x06ticker\x18\x01 \x01(\t\x12&\n\rstock_history\x18\x02 \x03(\x0b\x32\x0f.momentum.OHLCV\x12I\n\x0emarket_history\x18\x03 \x03(\x0b\x32\x31.momentum.BatchMomentumRequest.MarketHistoryEntry\x12\x0e\n\x06tweets\x18\x04 \x03(\t\x12\x12\n\nmodel_type\x18\x06 \x01(\t\x12\x0f\n\x07offsets\x18\x05 \x03(\x05\x1aI\n\x12MarketHistoryEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\"\n\x05value\x18\x02 \x01(\x0b\x32\x13.momentum.OHLCVList:\x02\x38\x01\"*\n\x15\x42\x61tchMomentumResponse\x12\x11\n\tmomentums\x18\x01 \x03(\x02\"p\n\x05OHLCV\x12\x0c\n\x04\x64\x61te\x18\x01 \x01(\t\x12\x0c\n\x04open\x18\x02 \x01(\x01\x12\x0c\n\x04high\x18\x03 \x01(\x01\x12\x0b\n\x03low\x18\x04 \x01(\x01\x12\r\n\x05\x63lose\x18\x05 \x01(\x01\x12\x0e\n\x06volume\x18\x06 \x01(\x01\x12\x11\n\tadj_close\x18\x07 \x01(\x01\"\x8e\x02\n\x0fMomentumRequest\x12\x0e\n\x06ticker\x18\x01 \x01(\t\x12&\n\rstock_history\x18\x02 \x03(\x0b\x32\x0f.momentum.OHLCV\x12\x44\n\x0emarket_history\x18\x03 \x03(\x0b\x32,.momentum.MomentumRequest.MarketHistoryEntry\x12\x0e\n\x06tweets\x18\x04 \x03(\t\x12\x12\n\nmodel_type\x18\x06 \x01(\t\x12\x0e\n\x06offset\x18\x05 \x01(\x05\x1aI\n\x12MarketHistoryEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\"\n\x05value\x18\x02 \x01(\x0b\x32\x13.momentum.OHLCVList:\x02\x38\x01\",\n\tOHLCVList\x12\x1f\n\x06points\x18\x01 \x03(\x0b\x32\x0f.momentum.OHLCV\"$\n\x10MomentumResponse\x12\x10\n\x08momentum\x18\x01 \x01(\x02\x32\xb4\x01\n\x0fMomentumService\x12H\n\x0fPredictMomentum\x12\x19.momentum.MomentumRequest\x1a\x1a.momentum.MomentumResponse\x12W\n\x14\x42\x61tchPredictMomentum\x12\x1e.momentum.BatchMomentumRequest\x1a\x1f.momentum.BatchMomentumResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0emomentum.proto\x12\x08momentum\"\x99\x02\n\x14\x42\x61tchMomentumRequest\x12\x0e\n\x06ticker\x18\x01 \x01(\t\x12&\n\rstock_history\x18\x02 \x03(\x0b\x32\x0f.momentum.OHLCV\x12I\n\x0emarket_history\x18\x03 \x03(\x0b\x32\x31.momentum.BatchMomentumRequest.MarketHistoryEntry\x12\x0e\n\x06tweets\x18\x04 \x03(\t\x12\x12\n\nmodel_type\x18\x06 \x01(\t\x12\x0f\n\x07offsets\x18\x05 \x03(\x05\x1aI\n\x12MarketHistoryEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\"\n\x05value\x18\x02 \x01(\x0b\x32\x13.momentum.OHLCVList:\x02\x38\x01\"*\n\x15\x42\x61tchMomentumResponse\x12\x11\n\tmomentums\x18\x01 \x03(\x02\"p\n\x05OHLCV\x12\x0c\n\x04\x64\x61te\x18\x01 \x01(\t\x12\x0c\n\x04open\x18\x02 \x01(\x01\x12\x0c\n\x04high\x18\x03 \x01(\x01\x12\x0b\n\x03low\x18\x04 \x01(\x01\x12\r\n\x05\x63lose\x18\x05 \x01(\x01\x12\x0e\n\x06volume\x18\x06 \x01(\x01\x12\x11\n\tadj_close\x18\x07 \x01(\x01\"\x8e\x02\n\x0fMomentumRequest\x12\x0e\n\x06ticker\x18\x01 \x01(\t\x12&\n\rstock_history\x18\x02 \x03(\x0b\x32\x0f.momentum.OHLCV\x12\x44\n\x0emarket_history\x18\x03 \x03(\x0b\x32,.momentum.MomentumRequest.MarketHistoryEntry\x12\x0e\n\x06tweets\x18\x04 \x03(\t\x12\x12\n\nmodel_type\x18\x06 \x01(\t\x12\x0e\n\x06offset\x18\x05 \x01(\x05\x1aI\n\x12MarketHistoryEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\"\n\x05value\x18\x02 \x01(\x0b\x32\x13.momentum.OHLCVList:\x02\x38\x01\",\n\tOHLCVList\x12\x1f\n\x06points\x18\x01 \x03(\x0b\x32\x0f.momentum.OHLCV\"\xaf\x01\n\x10MomentumResponse\x12\x10\n\x08momentum\x18\x01 \x01(\x02\x12\x43\n\rmodel_outputs\x18\x02 \x03(\x0b\x32,.momentum.MomentumResponse.ModelOutputsEntry\x12\x0f\n\x07signals\x18\x03 \x03(\t\x1a\x33\n\x11ModelOutputsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\x02:\x02\x38\x01\x32\xb4\x01\n\x0fMomentumService\x12H\n\x0fPredictMomentum\x12\x19.momentum.MomentumRequest\x1a\x1a.momentum.MomentumResponse\x12W\n\x14\x42\x61tchPredictMomentum\x12\x1e.momentum.BatchMomentumRequest\x1a\x1f.momentum.BatchMomentumResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -35,6 +35,8 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_BATCHMOMENTUMREQUEST_MARKETHISTORYENTRY']._serialized_options = b'8\001'
   _globals['_MOMENTUMREQUEST_MARKETHISTORYENTRY']._loaded_options = None
   _globals['_MOMENTUMREQUEST_MARKETHISTORYENTRY']._serialized_options = b'8\001'
+  _globals['_MOMENTUMRESPONSE_MODELOUTPUTSENTRY']._loaded_options = None
+  _globals['_MOMENTUMRESPONSE_MODELOUTPUTSENTRY']._serialized_options = b'8\001'
   _globals['_BATCHMOMENTUMREQUEST']._serialized_start=29
   _globals['_BATCHMOMENTUMREQUEST']._serialized_end=310
   _globals['_BATCHMOMENTUMREQUEST_MARKETHISTORYENTRY']._serialized_start=237
@@ -49,8 +51,10 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_MOMENTUMREQUEST_MARKETHISTORYENTRY']._serialized_end=310
   _globals['_OHLCVLIST']._serialized_start=743
   _globals['_OHLCVLIST']._serialized_end=787
-  _globals['_MOMENTUMRESPONSE']._serialized_start=789
-  _globals['_MOMENTUMRESPONSE']._serialized_end=825
-  _globals['_MOMENTUMSERVICE']._serialized_start=828
-  _globals['_MOMENTUMSERVICE']._serialized_end=1008
+  _globals['_MOMENTUMRESPONSE']._serialized_start=790
+  _globals['_MOMENTUMRESPONSE']._serialized_end=965
+  _globals['_MOMENTUMRESPONSE_MODELOUTPUTSENTRY']._serialized_start=914
+  _globals['_MOMENTUMRESPONSE_MODELOUTPUTSENTRY']._serialized_end=965
+  _globals['_MOMENTUMSERVICE']._serialized_start=968
+  _globals['_MOMENTUMSERVICE']._serialized_end=1148
 # @@protoc_insertion_point(module_scope)

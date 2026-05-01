@@ -49,4 +49,6 @@ message OHLCVList {
 
 message MomentumResponse {
   float momentum = 1;
+  map<string, float> model_outputs = 2;
+  repeated string signals = 3;
 }

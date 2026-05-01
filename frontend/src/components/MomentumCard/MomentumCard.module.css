@@ -1,8 +1,8 @@
 /* ---------- Momentum Display ---------- */
 .momentumCard {
   margin-top: 0;
-  padding: 24px;
-  border-radius: 16px;
+  padding: 1rem;
+  border-radius: 4px;
   background-color: var(--bg-secondary);
   border: 1px solid rgba(255, 255, 255, 0.05);
   text-align: center;
@@ -10,20 +10,20 @@
 
 .momentumLabel {
   font-family: var(--font-heading);
-  font-size: 0.75rem;
+  font-size: 0.65rem;
   font-weight: 500;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .momentumValue {
   font-family: var(--font-heading);
-  font-size: 4rem;
+  font-size: 3rem;
   font-weight: 700;
   line-height: 1;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .momentumValueUp {
@@ -40,63 +40,54 @@
 
 .momentumDirection {
   display: inline-block;
-  padding: 8px 20px;
-  border-radius: 32px;
+  padding: 4px 12px;
+  border-radius: 2px;
   font-family: var(--font-heading);
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .momentumDirectionUp {
-  background-color: rgba(16, 185, 129, 0.15);
+  background-color: rgba(16, 185, 129, 0.1);
   color: var(--accent-green);
 }
 
 .momentumDirectionDown {
-  background-color: rgba(239, 68, 68, 0.15);
+  background-color: rgba(239, 68, 68, 0.1);
   color: #ef4444;
 }
 
 .momentumDirectionNeutral {
-  background-color: rgba(161, 161, 170, 0.15);
+  background-color: rgba(161, 161, 170, 0.1);
   color: var(--text-muted);
 }
 /* ---------- MODEL STATS ---------- */
 .statsGrid {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
-  margin-top: 2rem;
-  padding-top: 1.5rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.statItemPersona {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-bottom: 0.75rem;
-  border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
 }
 
 .statItemRow {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 1.5rem 1rem;
+  gap: 1rem 0.75rem;
 }
 
 .statItem {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.2rem;
   text-align: center;
 }
 
 .statLabel {
   font-family: var(--font-heading);
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -104,7 +95,7 @@
 
 .statValue {
   font-family: var(--font-heading);
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
   font-weight: 600;
   color: var(--text-main);
 }

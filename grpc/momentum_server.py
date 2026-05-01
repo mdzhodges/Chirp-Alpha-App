@@ -564,8 +564,45 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
             offset = request.offset if request.offset != 0 else 5
             text_feat = self._text_feature(request.tweets)
 
-            pred = self._predict_at_offset(model_id, stock_feats, market_feats, offset, text_feat)
-            return momentum_pb2.MomentumResponse(momentum=pred if pred is not None else 0.0)
+            # Calculate individual predictions for signal detection
+            model_preds = {}
+            for m_id in self.models.keys():
+                p = self._predict_single_model(m_id, stock_feats, market_feats, offset, text_feat)
+                if p is not None:
+                    model_preds[m_id] = p
+
+            # Calculate the primary prediction (weighted if ensemble)
+            if model_id == "ensemble":
+                weighted_sum = 0.0
+                total_weight = 0.0
+                for m_id, p in model_preds.items():
+                    stats = self.model_stats.get(m_id, {"up": 0.5, "down": 0.5})
+                    weight = stats["up"] if p > 0 else stats["down"]
+                    weighted_sum += p * weight
+                    total_weight += weight
+                pred = weighted_sum / total_weight if total_weight > 0 else 0.0
+            else:
+                pred = model_preds.get(model_id, 0.0)
+
+            # --- Flash Signal Detection ---
+            signals = []
+            
+            bearish_p = model_preds.get("bearish")
+            bullish_p = model_preds.get("bullish")
+            
+            # 1. Bias Flips
+            if bearish_p is not None and bearish_p > 0.25:
+                signals.append("SIGNAL: Bearish Persona has flipped Bullish")
+            
+            if bullish_p is not None and bullish_p < -0.25:
+                signals.append("SIGNAL: Bullish Persona has flipped Bearish")
+
+            return momentum_pb2.MomentumResponse(
+                momentum=pred,
+                model_outputs=model_preds,
+                signals=signals
+            )
+            
 
         except Exception as e:
             traceback.print_exc()

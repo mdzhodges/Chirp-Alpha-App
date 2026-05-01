@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -14,7 +15,6 @@ import { useTickerData } from "../../hooks/UseTickerData";
 import StockTwitsFeed from "../../components/StockTwitsFeed/StockTwitsFeed";
 import TickerCard from "../../components/TickerCard/TickerCard";
 import MomentumCard from "../../components/MomentumCard/MomentumCard";
-import SearchForm from "../../components/SearchForm/SearchForm";
 import PriceChart from "../../components/PriceChart/PriceChart";
 
 import styles from "./Dashboard.module.css";
@@ -37,8 +37,8 @@ const MODEL_OPTIONS = [
 ];
 
 export default function Dashboard() {
-  const [symbol, setSymbol] = useState("AAPL");
-  const [querySymbol, setQuerySymbol] = useState("AAPL");
+  const [searchParams] = useSearchParams();
+  const querySymbol = searchParams.get("s") || "AAPL";
   const [modelType, setModelType] = useState("balanced");
 
   const { status, error, ticker, history } = useTickerData(querySymbol, modelType);
@@ -94,14 +94,6 @@ export default function Dashboard() {
         </div>
 
         <div className={styles.toolbar}>
-          <div className={styles.searchWrap}>
-            <SearchForm
-              symbol={symbol}
-              setSymbol={setSymbol}
-              setQuerySymbol={setQuerySymbol}
-              status={status}
-            />
-          </div>
           <div className={styles.modelSelector}>
             <span className={styles.selectorLabel}>AI Persona</span>
             <div className={styles.modelGrid}>
@@ -129,6 +121,16 @@ export default function Dashboard() {
       <div className={styles.dashboardGrid}>
         {/* Left: Huge Chart */}
         <section className={styles.chartSection}>
+          {ticker?.signals && ticker.signals.length > 0 && (
+            <div className={styles.signalsContainer}>
+              {ticker.signals.map((sig, idx) => (
+                <div key={idx} className={styles.signalAlert}>
+                  <span className={styles.signalIcon}>⚡</span>
+                  {sig}
+                </div>
+              ))}
+            </div>
+          )}
           <div className={styles.card}>
             {history ? (
               <PriceChart history={history} ticker={ticker} />
@@ -138,6 +140,13 @@ export default function Dashboard() {
               </div>
             )}
           </div>
+
+          {ticker?.description && (
+            <div className={styles.descriptionCard}>
+              <h3 className={styles.subTitle}>About {ticker.symbol}</h3>
+              <p className={styles.descriptionText}>{ticker.description}</p>
+            </div>
+          )}
           
           {/* Social Feed at the bottom of chart on desktop */}
           <div className={styles.feedSection}>

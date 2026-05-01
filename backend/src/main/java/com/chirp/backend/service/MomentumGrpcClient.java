@@ -28,7 +28,9 @@ public class MomentumGrpcClient {
         this.blockingStub = MomentumServiceGrpc.newBlockingStub(channel);
     }
 
-    public float predictMomentum(String ticker, List<OHLCV> stockHistory, Map<String, List<OHLCV>> marketHistory, List<String> tweets, int offset, String modelType) {
+    public record PredictionResult(float momentum, List<String> signals) {}
+
+    public PredictionResult predictMomentum(String ticker, List<OHLCV> stockHistory, Map<String, List<OHLCV>> marketHistory, List<String> tweets, int offset, String modelType) {
         MomentumRequest request = MomentumRequest.newBuilder()
                 .setTicker(ticker)
                 .addAllStockHistory(stockHistory)
@@ -39,7 +41,7 @@ public class MomentumGrpcClient {
                 .build();
 
         MomentumResponse response = blockingStub.predictMomentum(request);
-        return response.getMomentum();
+        return new PredictionResult(response.getMomentum(), response.getSignalsList());
     }
 
     public List<Float> batchPredictMomentum(String ticker, List<OHLCV> stockHistory, Map<String, List<OHLCV>> marketHistory, List<String> tweets, List<Integer> offsets, String modelType) {

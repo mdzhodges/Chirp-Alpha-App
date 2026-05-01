@@ -1,14 +1,25 @@
 /* ============================================================
    Professional "Alpha" Dashboard Layout
    ============================================================ */
-
+   .page {
+     min-height: 100vh;
+     background-color: var(--bg-main);
+     color: var(--text-main);
+     font-family: var(--font-body);
+     background-image:
+       radial-gradient(circle at top, rgba(16, 185, 129, 0.05) 0%, transparent 50%),
+       linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+       linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+     background-size: 100% 100%, 40px 40px, 40px 40px;
+   }
+   
 .container {
   max-width: 1600px;
   margin: 0 auto;
-  padding: 1.25rem 2rem;
+  padding: 0.75rem 1.25rem;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1rem;
   min-height: 100vh;
 }
 
@@ -17,18 +28,18 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 2rem;
-  padding: 1.25rem 1.5rem;
+  gap: 1.5rem;
+  padding: 0.75rem 1rem;
   background: var(--bg-secondary);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
+  border-radius: 4px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
 }
 
 .tickerHeader {
   display: flex;
   align-items: center;
-  gap: 2rem;
+  gap: 1.25rem;
   min-width: 0;
 }
 
@@ -90,12 +101,6 @@
   gap: 1.5rem;
 }
 
-/* Compact Search Wrap */
-.searchWrap :global(.SearchForm_form__5xZ6r) { /* Handling nested component style override if needed, but lets just layout it */
-  margin-top: 0;
-  gap: 8px;
-}
-
 /* ---------- MODEL SELECTOR ---------- */
 .modelSelector {
   display: flex;
@@ -145,62 +150,68 @@
 /* ---------- GRID SYSTEM ---------- */
 .dashboardGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 400px;
-  gap: 1.5rem;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 1rem;
   align-items: start;
 }
 
 .chartSection {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1rem;
 }
 
 .sidebar {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1rem;
 }
 
 .stickyCol {
-  /* position: sticky; */
-  /* top: 1.5rem; */
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1rem;
 }
 
 /* ---------- COMPONENTS ---------- */
 .card {
   background: var(--bg-secondary);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 16px;
-  padding: 1.5rem;
+  border-radius: 4px;
+  padding: 1rem;
   min-height: 500px;
 }
 
 .statsCard {
   background: var(--bg-secondary);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 16px;
-  padding: 1.5rem;
+  border-radius: 4px;
+  padding: 1rem;
 }
 
 .feedSection {
   background: var(--bg-secondary);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 16px;
+  border-radius: 4px;
+  padding: 1rem;
+}
+
+.descriptionCard {
+  background: var(--bg-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
   padding: 1.5rem;
+  border-left: 3px solid var(--accent-green);
 }
 
 .subTitle {
   font-family: var(--font-heading);
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  margin: 0 0 1.25rem 0;
+  margin: 0 0 1rem 0;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -208,10 +219,17 @@
 
 .subTitle::before {
   content: "";
-  width: 4px;
-  height: 14px;
+  width: 3px;
+  height: 12px;
   background: var(--accent-green);
-  border-radius: 2px;
+  border-radius: 0;
+}
+
+.descriptionText {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: var(--text-main);
+  margin: 0;
 }
 
 .loadingState {
@@ -221,6 +239,39 @@
   color: var(--text-muted);
   font-style: italic;
   font-size: 1.1rem;
+}
+
+/* ---------- AI SIGNALS ---------- */
+.signalsContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.signalAlert {
+  background: linear-gradient(90deg, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0.05) 100%);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-left: 3px solid var(--accent-blue);
+  color: #93c5fd;
+  padding: 0.5rem 1rem;
+  border-radius: 2px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  animation: slideIn 0.3s ease-out;
+}
+
+.signalIcon {
+  font-size: 1rem;
+  filter: drop-shadow(0 0 5px var(--accent-blue));
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .errorBanner {
