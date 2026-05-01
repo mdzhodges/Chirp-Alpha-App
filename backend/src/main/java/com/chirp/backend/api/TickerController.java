@@ -27,17 +27,19 @@ public class TickerController {
 
   @GetMapping
   public TickerResponse fetchByQuery(
-      @RequestParam("symbol") @NotBlank @Size(min = 1, max = 64) String symbol) {
-    return tickerService.fetch(symbol);
+      @RequestParam("symbol") @NotBlank @Size(min = 1, max = 64) String symbol,
+      @RequestParam(value = "modelType", defaultValue = "balanced") String modelType) {
+    return tickerService.fetch(symbol, modelType);
   }
 
   @GetMapping("/{symbol}")
-  public TickerResponse fetchByPath(@PathVariable("symbol") @NotBlank @Size(min = 1, max = 64) String symbol) {
-    return tickerService.fetch(symbol);
+  public TickerResponse fetchByPath(@PathVariable("symbol") @NotBlank @Size(min = 1, max = 64) String symbol,
+      @RequestParam(value = "modelType", defaultValue = "balanced") String modelType) {
+    return tickerService.fetch(symbol, modelType);
   }
 
   @PostMapping
   public TickerResponse fetchByBody(@Valid @RequestBody TickerRequest request) {
-    return tickerService.fetch(request.symbol());
+    return tickerService.fetch(request.symbol(), request.modelType());
   }
 }

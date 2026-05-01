@@ -280,3 +280,47 @@
     padding: 1.25rem 1.25rem;
   }
 }
+/* ---------- MODEL SELECTOR ---------- */
+.modelSelector {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 4px;
+  gap: 2px;
+}
+
+.selectorLabel {
+  font-family: var(--font-heading);
+  font-weight: 500;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0 0.5rem;
+}
+
+.modelBtn {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  font-family: var(--font-heading);
+  font-weight: 500;
+  font-size: 0.8125rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.modelBtn:hover {
+  color: var(--text-main);
+}
+
+.modelBtnActive {
+  background: var(--bg-main);
+  color: var(--accent-green);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+}

@@ -28,12 +28,13 @@ public class MomentumGrpcClient {
         this.blockingStub = MomentumServiceGrpc.newBlockingStub(channel);
     }
 
-    public float predictMomentum(String ticker, List<OHLCV> stockHistory, Map<String, List<OHLCV>> marketHistory, List<String> tweets, int offset) {
+    public float predictMomentum(String ticker, List<OHLCV> stockHistory, Map<String, List<OHLCV>> marketHistory, List<String> tweets, int offset, String modelType) {
         MomentumRequest request = MomentumRequest.newBuilder()
                 .setTicker(ticker)
                 .addAllStockHistory(stockHistory)
                 .addAllTweets(tweets)
                 .setOffset(offset)
+                .setModelType(modelType != null ? modelType : "balanced")
                 .putAllMarketHistory(buildMarketHistoryMap(marketHistory))
                 .build();
 
@@ -41,12 +42,13 @@ public class MomentumGrpcClient {
         return response.getMomentum();
     }
 
-    public List<Float> batchPredictMomentum(String ticker, List<OHLCV> stockHistory, Map<String, List<OHLCV>> marketHistory, List<String> tweets, List<Integer> offsets) {
+    public List<Float> batchPredictMomentum(String ticker, List<OHLCV> stockHistory, Map<String, List<OHLCV>> marketHistory, List<String> tweets, List<Integer> offsets, String modelType) {
         BatchMomentumRequest request = BatchMomentumRequest.newBuilder()
                 .setTicker(ticker)
                 .addAllStockHistory(stockHistory)
                 .addAllTweets(tweets)
                 .addAllOffsets(offsets)
+                .setModelType(modelType != null ? modelType : "balanced")
                 .putAllMarketHistory(buildMarketHistoryMap(marketHistory))
                 .build();
 

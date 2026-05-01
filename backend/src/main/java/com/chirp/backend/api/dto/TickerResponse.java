@@ -33,6 +33,7 @@ public record TickerResponse(
     BigDecimal momentum,
     List<MomentumPoint> momentumHistory,
     List<GraphPoint> graphData,
+    ModelStats modelStats,
     Instant fetchedAt) {
 
   public record GraphPoint(
@@ -45,5 +46,12 @@ public record TickerResponse(
   public record MomentumPoint(
       Instant timestamp,
       BigDecimal value) {}
+
+  public record ModelStats(
+      String modelType,
+      BigDecimal overallAccuracy,
+      BigDecimal upAccuracy,
+      BigDecimal downAccuracy,
+      BigDecimal ic) {}
 }
 

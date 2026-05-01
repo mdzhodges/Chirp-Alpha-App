@@ -1,5 +1,5 @@
+import gc
 import os
-import re
 import time
 from pathlib import Path
 
@@ -15,19 +15,12 @@ START_DATE = "2010-01-01"
 
 
 def normalize_ticker(s: str) -> str:
-    """Normalize a ticker symbol so news + filenames line up.
-
-    Strips whitespace, uppercases, removes a leading '$', and drops anything
-    after the first space (e.g. 'AAPL US Equity' -> 'AAPL').
-    """
     if s is None:
         return ""
     s = str(s).strip().upper()
     if s.startswith("$"):
         s = s[1:]
     s = s.split()[0] if s else s
-    # Replace common share-class separators so e.g. 'BRK.B' stays 'BRK.B'
-    # but 'AAPL/' becomes 'AAPL'
     s = s.rstrip("/.,;:")
     return s
 
@@ -81,12 +74,10 @@ def create_stock_features_single(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
     if len(df) < 60:
         return pd.DataFrame()
 
-    # Pre-filter by date to save computation (keep a buffer for rolling windows)
     df = df[df["Date"] >= pd.Timestamp(START_DATE) - pd.Timedelta(days=100)].copy()
     if len(df) < 60:
         return pd.DataFrame()
 
-    # Returns
     df["return_1d"] = df["Close"].pct_change(1)
     df["return_5d"] = df["Close"].pct_change(5)
     df["return_10d"] = df["Close"].pct_change(10)
@@ -95,7 +86,6 @@ def create_stock_features_single(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
     df["gap"] = (df["Open"] - df["Close"].shift(1)) / (df["Close"].shift(1) + 1e-9)
     df["intraday_return"] = (df["Close"] - df["Open"]) / (df["Open"] + 1e-9)
 
-    # Moving averages
     df["SMA_5"] = ta.sma(df["Close"], length=5) / (df["Close"] + 1e-9)
     df["SMA_10"] = ta.sma(df["Close"], length=10) / (df["Close"] + 1e-9)
     df["SMA_20"] = ta.sma(df["Close"], length=20) / (df["Close"] + 1e-9)
@@ -105,18 +95,15 @@ def create_stock_features_single(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
     df["price_to_SMA5"] = df["Close"] / (ta.sma(df["Close"], length=5) + 1e-9)
     df["price_to_SMA20"] = df["Close"] / (ta.sma(df["Close"], length=20) + 1e-9)
 
-    # Volatility
     df["volatility_5d"] = df["return_1d"].rolling(5).std()
     df["volatility_20d"] = df["return_1d"].rolling(20).std()
     df["ATR_14"] = ta.atr(df["High"], df["Low"], df["Close"], length=14) / (df["Close"] + 1e-9)
 
-    # Bollinger Bands
     bbands = ta.bbands(df["Close"], length=20, std=2)
     if bbands is not None and not bbands.empty:
         df["BB_width"] = (bbands.iloc[:, 0] - bbands.iloc[:, 2]) / (bbands.iloc[:, 1] + 1e-9)
         df["BB_position"] = (df["Close"] - bbands.iloc[:, 2]) / (bbands.iloc[:, 0] - bbands.iloc[:, 2] + 1e-9)
 
-    # Momentum oscillators
     df["RSI_14"] = ta.rsi(df["Close"], length=14)
     macd = ta.macd(df["Close"])
     if macd is not None and not macd.empty:
@@ -129,7 +116,6 @@ def create_stock_features_single(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
     if stoch is not None and not stoch.empty:
         df["stochastic_14"] = stoch.iloc[:, 0]
 
-    # Volume
     v_sma = ta.sma(df["Volume"], length=20)
     df["volume_SMA_20"] = v_sma / (df["Volume"] + 1e-9)
     df["volume_ratio_20"] = df["Volume"] / (v_sma + 1e-9)
@@ -137,7 +123,6 @@ def create_stock_features_single(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
     df["OBV"] = ta.obv(df["Close"], df["Volume"]) / (df["Volume"].rolling(20).mean() + 1e-9)
     df["MFI_14"] = ta.mfi(df["High"], df["Low"], df["Close"], df["Volume"], length=14)
 
-    # Candle shape
     df["daily_range"] = (df["High"] - df["Low"]) / (df["Close"] + 1e-9)
     df["close_position"] = (df["Close"] - df["Low"]) / (df["High"] - df["Low"] + 1e-9)
     df["upper_wick"] = (df["High"] - np.maximum(df["Close"], df["Open"])) / (df["Close"] + 1e-9)
@@ -148,7 +133,6 @@ def create_stock_features_single(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
     if adx is not None and not adx.empty:
         df["ADX_14"] = adx.iloc[:, 0]
 
-    # Target
     df["raw_return"] = df["Close"].shift(-5) / df["Close"] - 1
     df["momentum"] = df["raw_return"] * 100.0
 
@@ -166,8 +150,13 @@ def create_stock_features_single(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
     return df[keep_cols]
 
 
-def process_news_polars(csv_path: Path) -> pd.DataFrame:
-    """Lightning fast news processing using Polars."""
+def write_news_to_parquet(csv_path: Path, out_path: Path) -> tuple[int, int]:
+    """Stream news CSV through polars, aggregate per (ticker, date), write
+    directly to parquet. Returns (n_rows, n_unique_tickers).
+
+    Output schema: ticker (str), Date (date), tweets (List[Struct{text}])
+    Stays as polars throughout — never materializes to pandas, never builds
+    Python list-of-dicts per row in memory."""
     print(f"Scanning news data (starting from {START_DATE})...")
 
     cols = [
@@ -176,18 +165,13 @@ def process_news_polars(csv_path: Path) -> pd.DataFrame:
         "Article_title", "Article",
     ]
 
-    # Lazy scan, filter, and pick the best text column per row.
-    # Note: avoid pl.Object / map_elements inside group_by; that path
-    # triggers a Rust panic in extension/drop.rs on cleanup.
     q = (
         pl.scan_csv(csv_path, infer_schema_length=10000, ignore_errors=True)
         .select(cols)
-        # Parse Date without timezone so date_key matches local stock dates.
         .with_columns(pl.col("Date").str.slice(0, 10).str.to_date(strict=False))
         .filter(pl.col("Date") >= pl.date(2010, 1, 1))
         .drop_nulls(["Date", "Stock_symbol"])
         .with_columns([
-            # Normalize ticker: trim, uppercase, drop leading '$', take first token.
             pl.col("Stock_symbol")
               .str.strip_chars()
               .str.to_uppercase()
@@ -195,7 +179,6 @@ def process_news_polars(csv_path: Path) -> pd.DataFrame:
               .str.split(" ")
               .list.first()
               .alias("ticker"),
-            pl.col("Date").alias("date_key"),
         ])
         .with_columns(
             text=pl.coalesce([
@@ -209,36 +192,64 @@ def process_news_polars(csv_path: Path) -> pd.DataFrame:
         )
         .filter(pl.col("text").is_not_null())
         .filter(pl.col("ticker").str.len_chars() > 0)
-        .select(["ticker", "date_key", "text"])
+        .select(["ticker", "Date", "text"])
     )
 
-    print("Aggregating news by ticker and date...")
+    print("Aggregating news by ticker and date and writing to parquet...")
     news_agg = (
-        q.group_by(["ticker", "date_key"])
-        .agg(pl.col("text"))
-        .collect(engine="streaming")
+        q.group_by(["ticker", "Date"])
+        .agg(pl.col("text").alias("texts"))
+        .with_columns(
+            # Convert each text to {"text": ...} struct so it matches what
+            # the rest of the pipeline expects (list[struct{text}]).
+            tweets=pl.col("texts").list.eval(pl.struct(text=pl.element()))
+        )
+        .select(["ticker", "Date", "tweets"])
+        .sort(["ticker", "Date"])
     )
 
-    df = news_agg.to_pandas()
-    df["tweets"] = df["text"].apply(lambda lst: [{"text": t} for t in lst])
-    df = df.drop(columns=["text"])
-    # Force date_key to plain python date for clean merging later.
-    df["date_key"] = pd.to_datetime(df["date_key"]).dt.date
-    return df
+    news_agg.sink_parquet(out_path, compression="zstd")
+
+    # Quick stats by re-scanning the parquet (cheap, lazy)
+    stats = (
+        pl.scan_parquet(out_path)
+        .select([pl.len().alias("n_rows"), pl.col("ticker").n_unique().alias("n_tickers")])
+        .collect()
+    )
+    return int(stats["n_rows"][0]), int(stats["n_tickers"][0])
+
+
+def write_stock_feats_to_parquet(stock_feats: pd.DataFrame, out_path: Path) -> None:
+    """Pack per-row stock features into a struct column and write to parquet."""
+    stock_val_cols = [c for c in stock_feats.columns if c not in ["ticker", "Date", "momentum", "raw_return"]]
+    stock_feats["stock"] = stock_feats[stock_val_cols].to_dict(orient="records")
+    out = stock_feats[["ticker", "Date", "stock", "momentum"]]
+    out.to_parquet(out_path, index=False)
 
 
 def main():
     base_dir = Path(os.getenv("DATA_PATH", "data"))
+    tmp_dir = base_dir / "_tmp"
+    tmp_dir.mkdir(exist_ok=True)
 
-    # 1. News
+    news_parquet = tmp_dir / "news.parquet"
+    stock_parquet = tmp_dir / "stock_feats.parquet"
+    market_parquet = tmp_dir / "market_feats.parquet"
+
+    # 1. News -> parquet (streaming, low memory)
     t0 = time.time()
-    news_df = process_news_polars(base_dir / "news_data.csv")
+    n_rows, n_tickers = write_news_to_parquet(base_dir / "news_data.csv", news_parquet)
     print(f"News processed in {(time.time() - t0) / 60:.2f} minutes.")
-    print(f"  News rows: {len(news_df):,}")
-    print(f"  News unique tickers: {news_df['ticker'].nunique():,}")
-    print(f"  Top news tickers: {news_df['ticker'].value_counts().head(10).to_dict()}")
+    print(f"  News rows: {n_rows:,}")
+    print(f"  News unique tickers: {n_tickers:,}")
 
-    news_tickers = set(news_df["ticker"].unique())
+    # Read the small ticker-set into memory only (for filtering stock files).
+    news_tickers = set(
+        pl.scan_parquet(news_parquet)
+        .select(pl.col("ticker").unique())
+        .collect()["ticker"]
+        .to_list()
+    )
     wanted_tickers = news_tickers | {"DIA", "QQQ", "SPY", "^VIX", "VIX"}
 
     # 2. Stocks
@@ -250,11 +261,6 @@ def main():
     file_stems = {f.stem.upper() for f in stock_files}
     overlap = news_tickers & file_stems
     print(f"  News/file ticker overlap: {len(overlap):,} of {len(news_tickers):,} news tickers")
-    if len(overlap) < 10:
-        sample_news = sorted(list(news_tickers))[:20]
-        sample_files = sorted(list(file_stems))[:20]
-        print(f"  WARN: low overlap. Sample news tickers: {sample_news}")
-        print(f"  WARN: sample file stems: {sample_files}")
 
     processed_stocks = []
     fail_count = 0
@@ -274,6 +280,7 @@ def main():
                 continue
             sdf["Date"] = pd.to_datetime(sdf["Date"], errors="coerce")
             sdf = sdf.dropna(subset=["Date"])
+            sdf = sdf.sort_values("Date").reset_index(drop=True)
 
             fdf = create_stock_features_single(sdf, ticker)
             if not fdf.empty:
@@ -298,13 +305,19 @@ def main():
         raise RuntimeError("No stocks processed; aborting.")
 
     stock_feats = pd.concat(processed_stocks, ignore_index=True)
+    stock_feats["Date"] = pd.to_datetime(stock_feats["Date"]).dt.date
     print(f"  Stock feature rows: {len(stock_feats):,}, unique tickers: {stock_feats['ticker'].nunique():,}")
+
+    # Pack and write stock feats to parquet, then drop from memory
+    write_stock_feats_to_parquet(stock_feats, stock_parquet)
+    del processed_stocks, stock_feats
+    gc.collect()
+    print(f"  Wrote {stock_parquet}")
 
     # 3. Market features
     print("\nFinalizing market features...")
     market_list = []
     for t in ["DIA", "QQQ", "SPY", "^VIX"]:
-        # Try a few naming conventions for the index file.
         candidates = [
             stock_dir / f"{t}.csv",
             stock_dir / f"{t.replace('^', '')}.csv",
@@ -319,56 +332,79 @@ def main():
         m_df.columns = [c.capitalize() for c in m_df.columns]
         m_df = m_df[["Date", "Open", "High", "Low", "Close", "Volume"]].copy()
         m_df["Date"] = pd.to_datetime(m_df["Date"], errors="coerce")
-        m_df = m_df.dropna(subset=["Date"]).set_index("Date")
+        m_df = m_df.dropna(subset=["Date"])
+        m_df = m_df.sort_values("Date").set_index("Date")
         m_df.columns = [f"{t}_{c}" for c in m_df.columns]
         market_list.append(m_df)
 
-    market_df = pd.concat(market_list, axis=1).sort_index().reset_index()
+    if not market_list:
+        raise RuntimeError("No market index files found.")
+
+    market_df = pd.concat(market_list, axis=1, sort=True).reset_index()
     market_df["Date"] = pd.to_datetime(market_df["Date"])
+    market_df = market_df.sort_values("Date").reset_index(drop=True)
+
     market_feats = create_spy_features(market_df)
-
-    # 4. Final merge
-    print("\nMerging everything...")
-    stock_feats["Date"] = pd.to_datetime(stock_feats["Date"]).dt.date
-    market_feats["Date"] = pd.to_datetime(market_feats["Date"]).dt.date
-
-    stock_val_cols = [c for c in stock_feats.columns if c not in ["ticker", "Date", "momentum", "raw_return"]]
-    stock_feats["stock"] = stock_feats[stock_val_cols].to_dict(orient="records")
 
     spy_expected = expected_spy_feature_columns()
     for c in spy_expected:
         if c not in market_feats.columns:
             market_feats[c] = 0.0
     market_feats["spy"] = market_feats[spy_expected].to_dict(orient="records")
+    market_feats["Date"] = pd.to_datetime(market_feats["Date"]).dt.date
+    market_feats[["Date", "spy"]].to_parquet(market_parquet, index=False)
+    del market_list, market_df, market_feats
+    gc.collect()
+    print(f"  Wrote {market_parquet}")
 
-    # Diagnostics on join keys.
-    sample_stock_keys = set(zip(stock_feats["ticker"].head(100), stock_feats["Date"].head(100)))
-    sample_news_keys = set(zip(news_df["ticker"].head(100), news_df["date_key"].head(100)))
-    print(f"  Stock key sample: {list(sample_stock_keys)[:3]}")
-    print(f"  News key sample: {list(sample_news_keys)[:3]}")
-
-    combined = stock_feats[["ticker", "Date", "stock", "momentum"]].merge(
-        news_df, left_on=["ticker", "Date"], right_on=["ticker", "date_key"], how="left",
-    )
-    combined = combined.drop(columns=["date_key"], errors="ignore")
-    combined = combined.merge(market_feats[["Date", "spy"]], on="Date", how="left")
-
-    combined["tweets"] = combined["tweets"].apply(lambda x: x if isinstance(x, list) else [])
-    combined["spy"] = combined["spy"].apply(lambda x: x if isinstance(x, dict) else {})
-    combined["Date"] = combined["Date"].astype(str)
-
+    # 4. Final merge using polars streaming. This is the part that was OOMing.
+    print("\nMerging everything (polars streaming)...")
     out_path = base_dir / "data.parquet"
-    combined.to_parquet(out_path, index=False)
 
-    # Final report
+    stock_lf = pl.scan_parquet(stock_parquet)
+    news_lf = pl.scan_parquet(news_parquet)
+    market_lf = pl.scan_parquet(market_parquet)
+
+    # Cast Date columns to a consistent type for joining.
+    stock_lf = stock_lf.with_columns(pl.col("Date").cast(pl.Date))
+    news_lf = news_lf.with_columns(pl.col("Date").cast(pl.Date))
+    market_lf = market_lf.with_columns(pl.col("Date").cast(pl.Date))
+
+    combined_lf = (
+        stock_lf
+        .join(news_lf, on=["ticker", "Date"], how="left")
+        .join(market_lf, on=["Date"], how="left")
+        # Convert Date to string for downstream code that expects strings.
+        .with_columns(pl.col("Date").cast(pl.Utf8))
+    )
+
+    combined_lf.sink_parquet(out_path, compression="zstd")
+
+    # Final report (cheap re-scan)
+    stats = (
+        pl.scan_parquet(out_path)
+        .select([
+            pl.len().alias("n_rows"),
+            pl.col("ticker").n_unique().alias("n_tickers"),
+            pl.col("Date").min().alias("min_date"),
+            pl.col("Date").max().alias("max_date"),
+            pl.col("tweets").is_not_null().sum().alias("rows_with_tweets"),
+        ])
+        .collect()
+    )
     print("\n=== Preprocessing Complete ===")
     print(f"  Output: {out_path}")
-    print(f"  Total rows: {len(combined):,}")
-    print(f"  Date range: {combined['Date'].min()} to {combined['Date'].max()}")
-    print(f"  Unique tickers: {combined['ticker'].nunique():,}")
-    print(f"  Rows with tweets: {combined['tweets'].apply(len).gt(0).sum():,}")
-    total_tweets = combined["tweets"].apply(len).sum()
-    print(f"  Total tweets/articles: {total_tweets:,}")
+    print(f"  Total rows: {int(stats['n_rows'][0]):,}")
+    print(f"  Date range: {stats['min_date'][0]} to {stats['max_date'][0]}")
+    print(f"  Unique tickers: {int(stats['n_tickers'][0]):,}")
+    print(f"  Rows with tweets: {int(stats['rows_with_tweets'][0]):,}")
+
+    # Cleanup intermediates (optional — comment out to keep them for debugging)
+    for p in [news_parquet, stock_parquet, market_parquet]:
+        try:
+            p.unlink()
+        except OSError:
+            pass
 
 
 if __name__ == "__main__":

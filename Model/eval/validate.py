@@ -4,6 +4,7 @@ import pandas as pd
 from sklearn.metrics import r2_score
 import torch.nn.functional as F
 from typing import Optional
+from scipy.stats import spearmanr
 from torch.utils.data import DataLoader, TensorDataset
 
 def validate(
@@ -19,6 +20,10 @@ def validate(
     val_tweet_embeddings: Optional[torch.Tensor] = None,
     val_tweet_counts: Optional[torch.Tensor] = None,
     batch_size: int = 4096,
+    target_mean: float = 0.0,
+    target_std: float = 1.0,
+    pca_stock=None,
+    pca_spy=None,
 ):
     try:
         device = next(output_network.parameters()).device
@@ -39,20 +44,42 @@ def validate(
     output_network.eval()
     
     # Vectorized data extraction
-    def extract_features(data_list, expected_cols, scaler):
+    def extract_features(data_list, expected_cols, scaler, pca_model=None, tickers=None):
         if not data_list:
             return torch.zeros((0, len(expected_cols)), device=device)
         df = pd.DataFrame(data_list)
         forbidden = ['momentum', 'raw_return', 'Date', 'ticker']
         df = df.drop(columns=[c for c in forbidden if c in df.columns], errors='ignore')
-        df = df.select_dtypes(include=[np.number]).replace([np.inf, -np.inf], np.nan).fillna(0.0)
+        
+        # Numeric columns only
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        
+        if tickers is not None:
+            df["ticker"] = tickers
+            df[numeric_cols] = df.groupby("ticker")[numeric_cols].ffill()
+            df = df.drop(columns=["ticker"])
+            
+        df = df[numeric_cols].replace([np.inf, -np.inf], np.nan).fillna(0.0)
         df = df.reindex(columns=expected_cols, fill_value=0.0)
-        return torch.tensor(scaler.transform(df.to_numpy()), dtype=torch.float32)
+        
+        scaled = scaler.transform(df.to_numpy())
+        if pca_model is not None:
+            scaled = pca_model.transform(scaled)
+            
+        return torch.tensor(scaled, dtype=torch.float32)
 
     # Pre-process all validation data at once (Vectorized!)
-    stock_tensor_all = extract_features(val_data['stock'].tolist(), expected_stock_cols, stock_scaler)
-    spy_tensor_all = extract_features(val_data['spy'].tolist(), expected_spy_cols, spy_scaler)
-    momentum_targets = torch.tensor(val_data['momentum'].values, dtype=torch.float32)
+    val_tickers = val_data['ticker'].values if 'ticker' in val_data.columns else None
+    stock_tensor_all = extract_features(val_data['stock'].tolist(), expected_stock_cols, stock_scaler, pca_model=pca_stock, tickers=val_tickers)
+    spy_tensor_all = extract_features(val_data['spy'].tolist(), expected_spy_cols, spy_scaler, pca_model=pca_spy)
+    
+    # Validation targets: apply daily de-meaning to evaluate Alpha consistency
+    val_momentum_raw = val_data['momentum'].values
+    if 'Date' in val_data.columns:
+        daily_means = val_data.groupby('Date')['momentum'].transform('mean')
+        val_momentum_raw = val_momentum_raw - daily_means.to_numpy()
+    
+    momentum_targets = torch.tensor(val_momentum_raw, dtype=torch.float32)
     
     # Prepare embeddings
     if val_tweet_embeddings is not None:
@@ -101,12 +128,49 @@ def validate(
 
             s_feat = stock_network(s_batch)
             i_feat = index_network(i_batch)
-            combined = torch.cat((s_feat, i_feat, text_feat), dim=1)
+            
+            # Ensure text_feat matches numeric features rank
+            if s_feat.dim() == 3 and text_feat.dim() == 2:
+                text_feat = text_feat.unsqueeze(1).expand(-1, s_feat.size(1), -1)
+                
+            combined = torch.cat((s_feat, i_feat, text_feat), dim=-1)
+            
+            # Single-task regression output
             pred = output_network(combined).squeeze(-1)
+            
+            # If prediction is sequential [Batch, Seq], take the last step
+            if pred.dim() == 2 and s_feat.dim() == 3:
+                pred = pred[:, -1]
+                
             all_preds.append(pred.cpu())
 
-    preds = torch.cat(all_preds).numpy()
+    preds_scaled = torch.cat(all_preds).numpy()
+    
+    # Unscale predictions back to the original momentum range
+    preds = preds_scaled * target_std + target_mean
+    
     targets_momentum = momentum_targets.numpy()
+    
+    # Calculate Hybrid Loss on scaled space for early stopping
+    targets_scaled = (targets_momentum - target_mean) / (target_std + 1e-9)
+    mse_val = np.mean((preds_scaled - targets_scaled)**2)
+    
+    # Sign Penalty calculation with Directional Parity (mirrors trainer.py)
+    # Softened by removing the +1.0 constant for smoother zero-crossing
+    sign_mismatch = (np.sign(preds_scaled) != np.sign(targets_scaled)).astype(float)
+    sign_penalty_raw = sign_mismatch * np.abs(preds_scaled - targets_scaled)
+    
+    pos_mask_v = (targets_scaled > 0).astype(float)
+    neg_mask_v = (targets_scaled < 0).astype(float)
+    
+    sign_penalty_pos = np.sum(sign_penalty_raw * pos_mask_v) / (np.sum(pos_mask_v) + 1e-6)
+    sign_penalty_neg = np.sum(sign_penalty_raw * neg_mask_v) / (np.sum(neg_mask_v) + 1e-6)
+    sign_penalty = (sign_penalty_pos + sign_penalty_neg) / 2
+    
+    # Mean Stability constraint
+    mean_penalty = (np.mean(preds_scaled))**2
+    
+    hybrid_loss = mse_val + 0.5 * sign_penalty + 0.5 * mean_penalty
     
     mean_l1_val = np.mean(np.abs(preds - targets_momentum))
     r_squared = r2_score(targets_momentum, preds)
@@ -117,9 +181,52 @@ def validate(
     
     up_mask = targets_momentum >= 0
     down_mask = targets_momentum < 0
+
+    # After computing preds and targets_momentum
+    print(f"Target stats: min={targets_momentum.min():.2f}, max={targets_momentum.max():.2f}")
+    print(f"Target |x|>20: {(np.abs(targets_momentum) > 20).sum()} / {len(targets_momentum)}")
+    print(f"Target |x|>50: {(np.abs(targets_momentum) > 50).sum()} / {len(targets_momentum)}")
+    print(f"Target |x|>100: {(np.abs(targets_momentum) > 100).sum()} / {len(targets_momentum)}")
     
+    # Robust metrics
+    median_ae = np.median(np.abs(preds - targets_momentum))
+    rank_corr, _ = spearmanr(preds, targets_momentum)
+    print(f"Median AE: {median_ae:.4f}")
+    print(f"Spearman rank corr: {rank_corr:.4f}")
+    print(f"Hybrid Loss: {hybrid_loss:.4f} (MSE: {mse_val:.4f}, Sign: {sign_penalty:.4f}, Mean: {mean_penalty:.4f})")
+    
+    # R² on the bulk of data (excluding extreme outliers)
+    mask_bulk = np.abs(targets_momentum) <= 20
+    r2_bulk = r2_score(targets_momentum[mask_bulk], preds[mask_bulk])
+    print(f"R² on |target|<=20 ({mask_bulk.sum()} rows): {r2_bulk:.4f}")
+
+    unclipped_mask = np.abs(targets_momentum) < 30
+    if unclipped_mask.sum() > 100:
+        rank_corr_unclipped, _ = spearmanr(preds[unclipped_mask], targets_momentum[unclipped_mask])
+        print(f"Spearman (unclipped only, {unclipped_mask.sum()} rows): {rank_corr_unclipped:.4f}")
+    
+    clipped_mask = ~unclipped_mask
+    if clipped_mask.sum() > 0:
+        print(f"Clipped rows ({clipped_mask.sum()}): mean pred = {preds[clipped_mask].mean():.2f}, "
+              f"mean target = {targets_momentum[clipped_mask].mean():.2f}")
+    print(f"Unclipped: mean pred = {preds[unclipped_mask].mean():.2f}, "
+          f"mean target = {targets_momentum[unclipped_mask].mean():.2f}")
+
+    unique_dates_val = val_data['Date'].unique()
+    date_spearmans = []
+    for d in unique_dates_val:
+        mask = (val_data['Date'].values == d)
+        if mask.sum() < 10:
+            continue
+        sp, _ = spearmanr(preds[mask], targets_momentum[mask])
+        if not np.isnan(sp):
+            date_spearmans.append(sp)
+    print(f"Date-wise Spearman: mean={np.mean(date_spearmans):.4f}, median={np.median(date_spearmans):.4f}")
+
     up_accuracy = np.mean(np.sign(preds[up_mask]) == np.sign(targets_momentum[up_mask])) if up_mask.any() else 0.0
     down_accuracy = np.mean(np.sign(preds[down_mask]) == np.sign(targets_momentum[down_mask])) if down_mask.any() else 0.0
+
+    print(f'Up accuracy: {up_accuracy}, Down accuracy: {down_accuracy}')
 
     # Restore modes
     if encoder is not None and prev_modes["encoder"] is not None:
@@ -128,4 +235,4 @@ def validate(
     index_network.train(prev_modes["index_network"])
     output_network.train(prev_modes["output_network"])
     
-    return huber_val, mean_l1_val, r_squared, directional_accuracy, up_accuracy, down_accuracy
+    return huber_val, mean_l1_val, r_squared, directional_accuracy, up_accuracy, down_accuracy, rank_corr, hybrid_loss

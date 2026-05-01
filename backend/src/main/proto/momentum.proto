@@ -3,6 +3,8 @@ syntax = "proto3";
 package momentum;
 
 option java_multiple_files = true;
+option java_package = "momentum";
+option java_outer_classname = "MomentumProto";
 
 service MomentumService {
   rpc PredictMomentum (MomentumRequest) returns (MomentumResponse);
@@ -14,6 +16,7 @@ message BatchMomentumRequest {
   repeated OHLCV stock_history = 2;
   map<string, OHLCVList> market_history = 3;
   repeated string tweets = 4;
+  string model_type = 6;
   repeated int32 offsets = 5;
 }
 
@@ -36,6 +39,7 @@ message MomentumRequest {
   repeated OHLCV stock_history = 2;
   map<string, OHLCVList> market_history = 3; // Keys: SPY, QQQ, DIA, ^VIX
   repeated string tweets = 4;
+  string model_type = 6;
   int32 offset = 5; // 0 for latest, 5 for 5 days ago, etc.
 }
 

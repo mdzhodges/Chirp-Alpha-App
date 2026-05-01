@@ -29,6 +29,13 @@ ChartJS.register(
   Legend
 );
 
+const MODEL_OPTIONS = [
+  { id: "balanced", label: "Balanced" },
+  { id: "bullish", label: "Bullish" },
+  { id: "bearish", label: "Bearish" },
+  { id: "high_ic", label: "High IC" },
+];
+
 const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'chart', label: 'Chart' },
@@ -39,8 +46,9 @@ export default function Dashboard() {
   const [symbol, setSymbol] = useState('AAPL');
   const [querySymbol, setQuerySymbol] = useState('AAPL');
   const [activeTab, setActiveTab] = useState('overview');
+  const [modelType, setModelType] = useState('balanced');
 
-  const { status, error, ticker, history } = useTickerData(querySymbol);
+  const { status, error, ticker, history } = useTickerData(querySymbol, modelType);
 
   const momentumNumber = ticker?.momentum ?? 0;
   const momentumDirection = useMemo(() => {
@@ -107,6 +115,20 @@ export default function Dashboard() {
           status={status}
         />
 
+        
+        <div className={styles.modelSelector}>
+          <span className={styles.selectorLabel}>Model:</span>
+          {MODEL_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              className={`${styles.modelBtn} ${modelType === opt.id ? styles.modelBtnActive : ""}`}
+              onClick={() => setModelType(opt.id)}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
         <nav className={styles.tabBar} role="tablist">
           {TABS.map((tab) => (
             <button
@@ -136,6 +158,7 @@ export default function Dashboard() {
               <MomentumCard
                 momentumNumber={momentumNumber}
                 momentumDirection={momentumDirection}
+                modelStats={ticker?.modelStats}
               />
               {history && (
                 <div className={styles.chartWrap}>

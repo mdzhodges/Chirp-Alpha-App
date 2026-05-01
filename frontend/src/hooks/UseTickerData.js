@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-export function useTickerData(querySymbol) {
+export function useTickerData(querySymbol, modelType = "balanced") {
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState(null);
   const [ticker, setTicker] = useState(null);
@@ -17,7 +17,7 @@ export function useTickerData(querySymbol) {
 
       try {
         const response = await fetch(
-          `/api/ticker?symbol=${encodeURIComponent(trimmed)}`,
+          `/api/ticker?symbol=${encodeURIComponent(trimmed)}&modelType=${encodeURIComponent(modelType)}`,
           { signal: controller.signal }
         );
 
@@ -49,7 +49,7 @@ export function useTickerData(querySymbol) {
 
     load();
     return () => controller.abort();
-  }, [querySymbol]);
+  }, [querySymbol, modelType]);
 
   return { status, error, ticker, history: ticker?.graphData ? { histogram: ticker.graphData } : null };
 }

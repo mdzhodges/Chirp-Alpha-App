@@ -42,7 +42,7 @@ public class YahooFinanceTickerService {
         this.stockTwitsService = stockTwitsService;
     }
 
-    public TickerResponse fetch(String symbol) {
+    public TickerResponse fetch(String symbol, String modelType) {
         log.debug("Fetching ticker data for: {}", symbol);
 
         JsonNode chartRoot = fetchChartDataWithRetry(symbol);
@@ -59,7 +59,7 @@ public class YahooFinanceTickerService {
         BigDecimal currentMomentum = BigDecimal.ZERO;
         List<TickerResponse.MomentumPoint> momentumHistory = new ArrayList<>();
         try {
-            MomentumData momentumData = fetchMomentumData(symbol);
+            MomentumData momentumData = fetchMomentumData(symbol, modelType);
             if (momentumData != null) {
                 currentMomentum = momentumData.current;
                 momentumHistory = momentumData.history;
@@ -68,16 +68,16 @@ public class YahooFinanceTickerService {
             log.error("Failed to fetch momentum for {}: {}", symbol, e.getMessage());
         }
 
-        return mapToTickerResponse(symbol, meta, summary, graphData, currentMomentum, momentumHistory);
+        return mapToTickerResponse(symbol, meta, summary, graphData, currentMomentum, momentumHistory, getModelStats(modelType));
     }
 
     private record MomentumData(BigDecimal current, List<TickerResponse.MomentumPoint> history) {}
 
-    private MomentumData fetchMomentumData(String symbol) {
-        JsonNode stockHistory = fetchDailyChartData(symbol, "60d");
+    private MomentumData fetchMomentumData(String symbol, String modelType) {
+        JsonNode stockHistory = fetchDailyChartData(symbol, "120d");
         Map<String, JsonNode> marketHistory = new HashMap<>();
         for (String m : List.of("SPY", "QQQ", "DIA", "^VIX")) {
-            marketHistory.put(m, fetchDailyChartData(m, "60d"));
+            marketHistory.put(m, fetchDailyChartData(m, "120d"));
         }
 
         // Fetch tweets and filter for data leakage
@@ -110,7 +110,7 @@ public class YahooFinanceTickerService {
 
         // We want a trend for the last 10 trading days
         List<Integer> offsets = List.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
-        List<Float> preds = momentumClient.batchPredictMomentum(symbol, stockOhlcv, marketOhlcv, tweets, offsets);
+        List<Float> preds = momentumClient.batchPredictMomentum(symbol, stockOhlcv, marketOhlcv, tweets, offsets, modelType);
 
         List<TickerResponse.MomentumPoint> historyPoints = new ArrayList<>();
         for (int i = 0; i < offsets.size() && i < preds.size(); i++) {
@@ -271,7 +271,7 @@ public class YahooFinanceTickerService {
         return points;
     }
 
-    private TickerResponse mapToTickerResponse(String symbol, JsonNode meta, JsonNode summary, List<GraphPoint> graphData, BigDecimal momentum, List<TickerResponse.MomentumPoint> momentumHistory) {
+    private TickerResponse mapToTickerResponse(String symbol, JsonNode meta, JsonNode summary, List<GraphPoint> graphData, BigDecimal momentum, List<TickerResponse.MomentumPoint> momentumHistory, TickerResponse.ModelStats modelStats) {
         JsonNode quoteRes = summary.path("quoteSummary").path("result").get(0);
         JsonNode priceMod = quoteRes.path("price");
         JsonNode summaryDetail = quoteRes.path("summaryDetail");
@@ -306,6 +306,7 @@ public class YahooFinanceTickerService {
                 momentum,
                 momentumHistory,
                 graphData,
+                modelStats,
                 Instant.now()
         );
     }
@@ -322,4 +323,19 @@ public class YahooFinanceTickerService {
     private interface RequestBuilder {
         HttpRequest build(String symbol, boolean isRetry);
     }
+
+    private TickerResponse.ModelStats getModelStats(String modelType) {
+        String type = (modelType == null || modelType.isEmpty()) ? "balanced" : modelType.toLowerCase();
+        return switch (type) {
+            case "bullish" -> new TickerResponse.ModelStats("Bullish", 
+                new BigDecimal("0.5137"), new BigDecimal("0.5288"), new BigDecimal("0.4991"), new BigDecimal("0.0431"));
+            case "bearish" -> new TickerResponse.ModelStats("Bearish", 
+                new BigDecimal("0.5158"), new BigDecimal("0.3023"), new BigDecimal("0.7215"), new BigDecimal("0.0441"));
+            case "high_ic" -> new TickerResponse.ModelStats("High IC", 
+                new BigDecimal("0.5192"), new BigDecimal("0.4332"), new BigDecimal("0.6021"), new BigDecimal("0.0495"));
+            default -> new TickerResponse.ModelStats("Balanced", 
+                new BigDecimal("0.5152"), new BigDecimal("0.5189"), new BigDecimal("0.5116"), new BigDecimal("0.0450"));
+        };
+    }
+
 }
