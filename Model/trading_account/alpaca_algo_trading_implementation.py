@@ -20,7 +20,7 @@ from Model.trading_account.alpaca_trading_portfolio import AlpacaTradingPortfoli
 from Model.utils.constants import Constants
 
 
-# TODO: The  portfolio will be equally weighted, remove 'random' logic from below
+# TODO: The portfolio will be equally weighted, remove 'random' logic from below
 class AlpacaAlgoTradingImplementation:
 
     def __init__(self) -> None:
