@@ -68,6 +68,19 @@ export default function Dashboard() {
       {/* 1. Dashboard Top Bar: Info + Tools */}
       <header className={styles.topBar}>
         <div className={styles.tickerHeader}>
+          
+          <div className={styles.logoWrap}>
+            {ticker?.logoUrl ? (
+              <img 
+                src={ticker.logoUrl} 
+                alt={`${ticker.symbol} logo`} 
+                className={styles.logo}
+                onError={(e) => e.target.style.display = "none"}
+              />
+            ) : (
+              <div className={styles.logoPlaceholder}>{ticker?.symbol?.charAt(0)}</div>
+            )}
+          </div>
           <div className={styles.tickerIdentify}>
             <h1 className={styles.symbol}>{ticker?.symbol || querySymbol}</h1>
             <span className={styles.name}>{ticker?.name || ""}</span>

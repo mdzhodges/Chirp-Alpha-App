@@ -34,6 +34,7 @@ public record TickerResponse(
     List<MomentumPoint> momentumHistory,
     List<GraphPoint> graphData,
     ModelStats modelStats,
+    String logoUrl,
     Instant fetchedAt) {
 
   public record GraphPoint(

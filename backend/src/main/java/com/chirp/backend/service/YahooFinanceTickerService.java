@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -32,14 +33,17 @@ public class YahooFinanceTickerService {
     private final YahooAuthService authService;
     private final MomentumGrpcClient momentumClient;
     private final StockTwitsService stockTwitsService;
+    private String logoDevApiKey;
 
     public YahooFinanceTickerService(ObjectMapper objectMapper, YahooAuthService authService, 
-                                    MomentumGrpcClient momentumClient, StockTwitsService stockTwitsService) {
+                                    MomentumGrpcClient momentumClient, StockTwitsService stockTwitsService,
+                                    @Value("${LOGO_DEV_API_KEY}") String logoDevApiKey) {
         this.httpClient = authService.getHttpClient();
         this.objectMapper = objectMapper;
         this.authService = authService;
         this.momentumClient = momentumClient;
         this.stockTwitsService = stockTwitsService;
+        this.logoDevApiKey = logoDevApiKey;
     }
 
     public TickerResponse fetch(String symbol, String modelType) {
@@ -92,10 +96,7 @@ public class YahooFinanceTickerService {
             if (messages.isArray()) {
                 for (JsonNode msg : messages) {
                     tweets.add(msg.path("body").asText());
-                    // Note: We'll filter per-prediction on the server if needed, 
-                    // but for simplicity we'll just send all tweets and let the server 
-                    // handle the temporal alignment if it were more sophisticated.
-                    // For now, let's just use the cutoff for the "current" one.
+
                 }
             }
         } catch (IOException e) {
@@ -179,7 +180,7 @@ public class YahooFinanceTickerService {
     private JsonNode fetchQuoteSummaryWithRetry(String symbol) {
         return executeWithRetry(symbol, "quoteSummary", (s, isRetry) -> {
             String encodedSymbol = URLEncoder.encode(s, StandardCharsets.UTF_8);
-            String url = String.format("https://query1.finance.yahoo.com/v10/finance/quoteSummary/%s?modules=summaryDetail,defaultKeyStatistics,price&crumb=%s",
+            String url = String.format("https://query1.finance.yahoo.com/v10/finance/quoteSummary/%s?modules=summaryDetail,defaultKeyStatistics,price,assetProfile&crumb=%s",
                     encodedSymbol, authService.getCrumb());
             return buildRequest(url);
         });
@@ -276,7 +277,19 @@ public class YahooFinanceTickerService {
         JsonNode priceMod = quoteRes.path("price");
         JsonNode summaryDetail = quoteRes.path("summaryDetail");
         JsonNode keyStats = quoteRes.path("defaultKeyStatistics");
-
+        JsonNode assetProfile = quoteRes.path("assetProfile");
+    
+        String website = assetProfile.path("website").asText(null);
+        String companyName = priceMod.path("longName").asText(null);
+    
+        String domain = null;
+        if (website != null && !website.isEmpty()) {
+            domain = website.replaceAll("https?://(www\\.)?", "").replaceAll("/.*", "");
+        }
+        String logoUrl = domain != null
+            ? "https://img.logo.dev/" + domain + "?token=" + logoDevApiKey + "&format=png"
+            : "https://img.logo.dev/" + symbol.toLowerCase() + ".com?token=" + logoDevApiKey + "&format=png";
+        
         return new TickerResponse(
                 meta.path("symbol").asText(symbol),
                 priceMod.path("longName").asText(null),
@@ -307,6 +320,7 @@ public class YahooFinanceTickerService {
                 momentumHistory,
                 graphData,
                 modelStats,
+                logoUrl,
                 Instant.now()
         );
     }
