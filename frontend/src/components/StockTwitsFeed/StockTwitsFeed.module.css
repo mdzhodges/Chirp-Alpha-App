@@ -54,6 +54,8 @@
   font-family: var(--font-body);
   font-size: 0.875rem;
   line-height: 1.6;
+  white-space: pre-wrap; /* Respect newlines in user messages */
+  overflow-wrap: break-word; /* Ensure long words don't break layout */
 }
 
 .userInfo {

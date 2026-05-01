@@ -43,6 +43,65 @@ export default function Dashboard() {
 
   const { status, error, ticker, history } = useTickerData(querySymbol, modelType);
 
+  const descriptionParagraphs = useMemo(() => {
+    if (!ticker?.description) return [];
+
+    // 1. Normalize: merge stray single newlines into spaces, but keep double newlines (paragraphs)
+    const normalized = ticker.description
+      .replace(/\n\n+/g, "[[PARA_BREAK]]")
+      .replace(/\n/g, " ")
+      .replace(/\[\[PARA_BREAK\]\]/g, "\n\n")
+      .trim();
+
+    // 2. Split into initial paragraphs by double newlines
+    const initialParas = normalized.split(/\n\n+/).filter(p => p.trim() !== "");
+    
+    // 3. Process each paragraph: if it's a huge block, break it up intelligently
+    const finalParas = [];
+    const ABBRS = ["Inc.", "Corp.", "Ltd.", "Co.", "U.S.", "Dr.", "Mr.", "Mrs.", "Ms.", "Jan.", "Feb.", "Mar.", "Apr.", "Jun.", "Jul.", "Aug.", "Sep.", "Oct.", "Nov.", "Dec.", "approx.", "est."];
+
+    initialParas.forEach(para => {
+      // If the paragraph is reasonably short, keep it as is
+      if (para.length < 500) {
+        finalParas.push(para);
+        return;
+      }
+
+      // Otherwise, split into sentences without breaking on abbreviations
+      const sentences = [];
+      let currentSentence = "";
+      const words = para.split(/\s+/);
+
+      for (let i = 0; i < words.length; i++) {
+        currentSentence += words[i] + " ";
+        
+        const word = words[i];
+        const isLastWord = i === words.length - 1;
+        const endsWithPunctuation = /[.!?]$/.test(word);
+        
+        // Check if it's a known abbreviation (case-insensitive for safety)
+        const isAbbreviation = ABBRS.some(abbr => word.toLowerCase() === abbr.toLowerCase());
+        
+        // A sentence break usually requires an uppercase letter or number in the next word
+        const nextWord = !isLastWord ? words[i + 1] : "";
+        const nextWordStartsUpper = /^[A-Z0-9]/.test(nextWord);
+
+        if (endsWithPunctuation && !isAbbreviation && (isLastWord || nextWordStartsUpper)) {
+          sentences.push(currentSentence.trim());
+          currentSentence = "";
+        }
+      }
+      if (currentSentence.trim()) sentences.push(currentSentence.trim());
+
+      // Group sentences into chunks of 3 for better readability
+      for (let i = 0; i < sentences.length; i += 3) {
+        finalParas.push(sentences.slice(i, i + 3).join(" ").trim());
+      }
+    });
+
+    return finalParas;
+  }, [ticker?.description]);
+
   const momentumNumber = ticker?.momentum ?? 0;
   const momentumDirection = useMemo(() => {
     if (momentumNumber > 0.1) return "up";
@@ -141,10 +200,16 @@ export default function Dashboard() {
             )}
           </div>
 
-          {ticker?.description && (
+          {descriptionParagraphs.length > 0 && (
             <div className={styles.descriptionCard}>
-              <h3 className={styles.subTitle}>About {ticker.symbol}</h3>
-              <p className={styles.descriptionText}>{ticker.description}</p>
+              <h3 className={styles.subTitle}>About {ticker?.symbol}</h3>
+              <div className={styles.descriptionContent}>
+                {descriptionParagraphs.map((para, idx) => (
+                  <p key={idx} className={styles.descriptionText}>
+                    {para}
+                  </p>
+                ))}
+              </div>
             </div>
           )}
           

@@ -225,6 +225,12 @@
   border-radius: 0;
 }
 
+.descriptionContent {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
 .descriptionText {
   font-size: 0.9375rem;
   line-height: 1.7;
