@@ -113,6 +113,7 @@ class AlpacaAlgoTradingImplementation:
                 stock_action: OrderSide = ticker_symbol_tuple[2]
 
                 if stock_quantity <= 0 and stock_action == OrderSide.SELL:
+                    # TODO: Add logger statement for this occurrence
                     continue
 
                 market_order_request: MarketOrderRequest = MarketOrderRequest(
