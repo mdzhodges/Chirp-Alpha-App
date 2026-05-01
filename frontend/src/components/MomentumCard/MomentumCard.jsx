@@ -29,17 +29,23 @@ export default function MomentumCard({ momentumNumber, momentumDirection, modelS
     
       {modelStats && (
         <div className={styles.statsGrid}>
-          <div className={styles.statItem}>
-            <span className={styles.statLabel}>Up Acc:</span>
-            <span className={styles.statValue}>{(Number(modelStats.upAccuracy || 0) * 100).toFixed(1)}%</span>
-          </div>
-          <div className={styles.statItem}>
-            <span className={styles.statLabel}>Down Acc:</span>
-            <span className={styles.statValue}>{(Number(modelStats.downAccuracy || 0) * 100).toFixed(1)}%</span>
-          </div>
-          <div className={styles.statItem}>
-            <span className={styles.statLabel}>IC:</span>
-            <span className={styles.statValue}>{Number(modelStats.ic || 0).toFixed(3)}</span>
+          <div className={styles.statItemRow}>
+            <div className={styles.statItem}>
+              <span className={styles.statLabel}>Overall Acc:</span>
+              <span className={styles.statValue}>{(Number(modelStats.overallAccuracy || 0) * 100).toFixed(2)}%</span>
+            </div>
+            <div className={styles.statItem}>
+              <span className={styles.statLabel}>Up Acc:</span>
+              <span className={styles.statValue}>{(Number(modelStats.upAccuracy || 0) * 100).toFixed(2)}%</span>
+            </div>
+            <div className={styles.statItem}>
+              <span className={styles.statLabel}>Down Acc:</span>
+              <span className={styles.statValue}>{(Number(modelStats.downAccuracy || 0) * 100).toFixed(2)}%</span>
+            </div>
+            <div className={styles.statItem}>
+              <span className={styles.statLabel}>IC:</span>
+              <span className={styles.statValue}>{Number(modelStats.ic || 0).toFixed(4)}</span>
+            </div>
           </div>
         </div>
       )}

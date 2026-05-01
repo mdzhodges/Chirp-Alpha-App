@@ -268,6 +268,14 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
             "high_ic": "high_ic.pt"
         }
 
+        # Historical accuracy stats for weighting the ensemble
+        self.model_stats = {
+            "balanced": {"up": 0.5189, "down": 0.5116},
+            "bullish":  {"up": 0.5288, "down": 0.4991},
+            "bearish":  {"up": 0.3023, "down": 0.7215},
+            "high_ic":  {"up": 0.4332, "down": 0.6021}
+        }
+
         for model_id, filename in model_files.items():
             path = os.path.join(models_dir, filename)
             if not os.path.exists(path):
@@ -481,13 +489,8 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
     # Single forward pass
     # -----------------------------------------------------------------------
 
-
-    def _predict_at_offset(self, model_id, stock_feats, market_feats, offset, text_feat):
+    def _predict_single_model(self, model_id, stock_feats, market_feats, offset, text_feat):
         m = self.models.get(model_id)
-        if not m:
-            # Fallback to balanced
-            m = self.models.get("balanced")
-        
         if not m:
             return None
 
@@ -515,19 +518,41 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
             standardized_val = raw_output.squeeze().item()
             unstandardized_val = (standardized_val * m["target_std"]) + m["target_mean"]
             
-            # print(f"DEBUG: Model={model_id} | Std={standardized_val:.6f} | Unstd={unstandardized_val:.6f}")
-            
         return float(unstandardized_val)
 
+    def _predict_at_offset(self, model_id, stock_feats, market_feats, offset, text_feat):
+        if model_id == "ensemble":
+            weighted_sum = 0.0
+            total_weight = 0.0
+            for m_id in self.models.keys():
+                p = self._predict_single_model(m_id, stock_feats, market_feats, offset, text_feat)
+                if p is not None:
+                    # Determine weight based on prediction direction and model accuracy
+                    stats = self.model_stats.get(m_id, {"up": 0.5, "down": 0.5})
+                    weight = stats["up"] if p > 0 else stats["down"]
+                    
+                    weighted_sum += p * weight
+                    total_weight += weight
+            
+            if total_weight == 0:
+                return 0.0
+            return weighted_sum / total_weight
+        
+        pred = self._predict_single_model(model_id, stock_feats, market_feats, offset, text_feat)
+        if pred is None and model_id != "balanced":
+            # Fallback to balanced if requested model fails
+            pred = self._predict_single_model("balanced", stock_feats, market_feats, offset, text_feat)
+            
+        return pred
 
     # -----------------------------------------------------------------------
     # RPC handlers
     # -----------------------------------------------------------------------
 
-
     def PredictMomentum(self, request, context):
         try:
-            model_id = request.model_type or "balanced"
+            model_id = request.model_type or "ensemble"
+                
             stock_feats = self._build_stock_features(request.stock_history, request.ticker)
             if stock_feats.empty:
                 return momentum_pb2.MomentumResponse(momentum=0.0)
@@ -536,7 +561,7 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
             if market_feats.empty:
                 return momentum_pb2.MomentumResponse(momentum=0.0)
 
-            offset = 5
+            offset = request.offset if request.offset != 0 else 5
             text_feat = self._text_feature(request.tweets)
 
             pred = self._predict_at_offset(model_id, stock_feats, market_feats, offset, text_feat)
@@ -550,7 +575,8 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
 
     def BatchPredictMomentum(self, request, context):
         try:
-            model_id = request.model_type or "balanced"
+            model_id = request.model_type or "ensemble"
+                
             stock_feats = self._build_stock_features(request.stock_history, request.ticker)
             if stock_feats.empty:
                 return momentum_pb2.BatchMomentumResponse(momentums=[0.0] * len(request.offsets))

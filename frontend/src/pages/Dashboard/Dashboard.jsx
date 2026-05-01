@@ -33,7 +33,7 @@ const MODEL_OPTIONS = [
   { id: "balanced", label: "Balanced" },
   { id: "bullish", label: "Bullish" },
   { id: "bearish", label: "Bearish" },
-  { id: "high_ic", label: "High IC" },
+  { id: "ensemble", label: "Consensus" },
 ];
 
 export default function Dashboard() {
