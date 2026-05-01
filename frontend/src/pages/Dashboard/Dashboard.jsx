@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState } from "react";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -8,16 +8,16 @@ import {
   Title,
   Tooltip,
   Legend,
-} from 'chart.js';
+} from "chart.js";
 
-import { useTickerData } from '../../hooks/UseTickerData';
-import StockTwitsFeed from '../../components/StockTwitsFeed/StockTwitsFeed';
-import TickerCard from '../../components/TickerCard/TickerCard';
-import MomentumCard from '../../components/MomentumCard/MomentumCard';
-import SearchForm from '../../components/SearchForm/SearchForm';
-import PriceChart from '../../components/PriceChart/PriceChart';
+import { useTickerData } from "../../hooks/UseTickerData";
+import StockTwitsFeed from "../../components/StockTwitsFeed/StockTwitsFeed";
+import TickerCard from "../../components/TickerCard/TickerCard";
+import MomentumCard from "../../components/MomentumCard/MomentumCard";
+import SearchForm from "../../components/SearchForm/SearchForm";
+import PriceChart from "../../components/PriceChart/PriceChart";
 
-import styles from './Dashboard.module.css';
+import styles from "./Dashboard.module.css";
 
 ChartJS.register(
   CategoryScale,
@@ -36,25 +36,18 @@ const MODEL_OPTIONS = [
   { id: "high_ic", label: "High IC" },
 ];
 
-const TABS = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'chart', label: 'Chart' },
-  { id: 'feed', label: 'Feed' },
-];
-
 export default function Dashboard() {
-  const [symbol, setSymbol] = useState('AAPL');
-  const [querySymbol, setQuerySymbol] = useState('AAPL');
-  const [activeTab, setActiveTab] = useState('overview');
-  const [modelType, setModelType] = useState('balanced');
+  const [symbol, setSymbol] = useState("AAPL");
+  const [querySymbol, setQuerySymbol] = useState("AAPL");
+  const [modelType, setModelType] = useState("balanced");
 
   const { status, error, ticker, history } = useTickerData(querySymbol, modelType);
 
   const momentumNumber = ticker?.momentum ?? 0;
   const momentumDirection = useMemo(() => {
-    if (momentumNumber > 0.1) return 'up';
-    if (momentumNumber < -0.1) return 'down';
-    return 'neutral';
+    if (momentumNumber > 0.1) return "up";
+    if (momentumNumber < -0.1) return "down";
+    return "neutral";
   }, [momentumNumber]);
 
   const change = Number(ticker?.change ?? 0);
@@ -62,133 +55,100 @@ export default function Dashboard() {
   const isUp = change >= 0;
 
   const priceFormatted = useMemo(() => {
-    if (ticker?.price == null) return '—';
+    if (ticker?.price == null) return "—";
     return new Intl.NumberFormat(undefined, {
-      style: 'currency',
-      currency: /^[A-Z]{3}$/.test(ticker.currency || '') ? ticker.currency : 'USD',
+      style: "currency",
+      currency: /^[A-Z]{3}$/.test(ticker.currency || "") ? ticker.currency : "USD",
       maximumFractionDigits: 2,
     }).format(Number(ticker.price));
   }, [ticker?.price, ticker?.currency]);
 
   return (
-    <div className={styles.page}>
-      {/* HERO STRIP: symbol, price, change. The thing you look at first. */}
-      <header className={styles.hero}>
-        <div className={styles.heroLeft}>
-          <div className={styles.heroSymbol}>{ticker?.symbol || querySymbol}</div>
-          <div className={styles.heroName}>{ticker?.name || ''}</div>
-          <div className={styles.heroMeta}>
-            {ticker?.exchange ? `${ticker.exchange} · ` : ''}
-            {ticker?.currency || 'USD'}
-            {ticker?.fetchedAt && (
-              <span className={styles.heroDot}>
-                · updated {new Date(ticker.fetchedAt).toLocaleTimeString()}
-              </span>
-            )}
+    <div className={styles.container}>
+      {/* 1. Dashboard Top Bar: Info + Tools */}
+      <header className={styles.topBar}>
+        <div className={styles.tickerHeader}>
+          <div className={styles.tickerIdentify}>
+            <h1 className={styles.symbol}>{ticker?.symbol || querySymbol}</h1>
+            <span className={styles.name}>{ticker?.name || ""}</span>
+          </div>
+          <div className={styles.priceRow}>
+            <div className={styles.price}>{priceFormatted}</div>
+            <div className={`${styles.change} ${isUp ? styles.changeUp : styles.changeDown}`}>
+              {isUp ? "▲" : "▼"} {Math.abs(change).toFixed(2)} ({Math.abs(changePercent).toFixed(2)}%)
+            </div>
           </div>
         </div>
 
-        <div className={styles.heroRight}>
-          <div className={styles.heroPrice}>{priceFormatted}</div>
-          <div
-            className={`${styles.heroChange} ${
-              isUp ? styles.heroChangeUp : styles.heroChangeDown
-            }`}
-          >
-            <span className={styles.heroChangeArrow}>{isUp ? '▲' : '▼'}</span>
-            {ticker?.change == null ? '—' : Math.abs(change).toFixed(2)}
-            {ticker?.changePercent != null && (
-              <span className={styles.heroChangePct}>
-                ({Math.abs(changePercent).toFixed(2)}%)
-              </span>
-            )}
+        <div className={styles.toolbar}>
+          <div className={styles.searchWrap}>
+            <SearchForm
+              symbol={symbol}
+              setSymbol={setSymbol}
+              setQuerySymbol={setQuerySymbol}
+              status={status}
+            />
+          </div>
+          <div className={styles.modelSelector}>
+            <span className={styles.selectorLabel}>AI Persona</span>
+            <div className={styles.modelGrid}>
+              {MODEL_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  className={`${styles.modelBtn} ${modelType === opt.id ? styles.modelBtnActive : ""}`}
+                  onClick={() => setModelType(opt.id)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </header>
 
-      {/* SEARCH + TABS row */}
-      <div className={styles.controls}>
-        <SearchForm
-          symbol={symbol}
-          setSymbol={setSymbol}
-          setQuerySymbol={setQuerySymbol}
-          status={status}
-        />
-
-        
-        <div className={styles.modelSelector}>
-          <span className={styles.selectorLabel}>Model:</span>
-          {MODEL_OPTIONS.map((opt) => (
-            <button
-              key={opt.id}
-              className={`${styles.modelBtn} ${modelType === opt.id ? styles.modelBtnActive : ""}`}
-              onClick={() => setModelType(opt.id)}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-
-        <nav className={styles.tabBar} role="tablist">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              role="tab"
-              aria-selected={activeTab === tab.id}
-              className={`${styles.tab} ${activeTab === tab.id ? styles.tabActive : ''}`}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-      </div>
-
-      {status === 'error' && (
-        <div className={styles.error}>
-          <strong>Failed to load ticker:</strong> {error}
+      {status === "error" && (
+        <div className={styles.errorBanner}>
+          <strong>Error:</strong> {error}
         </div>
       )}
 
-      {/* TAB PANELS */}
-      <main className={styles.panel}>
-        {activeTab === 'overview' && (
-          <div className={styles.overviewGrid}>
-            <section className={styles.overviewMain}>
-              <MomentumCard
-                momentumNumber={momentumNumber}
-                momentumDirection={momentumDirection}
-                modelStats={ticker?.modelStats}
-              />
-              {history && (
-                <div className={styles.chartWrap}>
-                  <PriceChart history={history} ticker={ticker} />
-                </div>
-              )}
-            </section>
-
-            <aside className={styles.overviewSide}>
-              {ticker && <TickerCard ticker={ticker} />}
-            </aside>
-          </div>
-        )}
-
-        {activeTab === 'chart' && (
-          <div className={styles.chartFull}>
+      {/* 2. Main Content Grid */}
+      <div className={styles.dashboardGrid}>
+        {/* Left: Huge Chart */}
+        <section className={styles.chartSection}>
+          <div className={styles.card}>
             {history ? (
               <PriceChart history={history} ticker={ticker} />
             ) : (
-              <div className={styles.empty}>No price history available.</div>
+              <div className={styles.loadingState}>
+                {status === "loading" ? "Analyzing Market Cycles..." : "Search for a ticker to begin"}
+              </div>
             )}
           </div>
-        )}
-
-        {activeTab === 'feed' && (
-          <div className={styles.feedFull}>
-            <StockTwitsFeed symbol={querySymbol} />
+          
+          {/* Social Feed at the bottom of chart on desktop */}
+          <div className={styles.feedSection}>
+             <h3 className={styles.subTitle}>Social Sentiment & Pulse</h3>
+             <StockTwitsFeed symbol={querySymbol} />
           </div>
-        )}
-      </main>
+        </section>
+
+        {/* Right: AI Insights & Fundamentals */}
+        <aside className={styles.sidebar}>
+          <div className={styles.stickyCol}>
+            <MomentumCard
+              momentumNumber={momentumNumber}
+              momentumDirection={momentumDirection}
+              modelStats={ticker?.modelStats}
+            />
+            
+            <div className={styles.statsCard}>
+              <h3 className={styles.subTitle}>Market Data</h3>
+              {ticker && <TickerCard ticker={ticker} />}
+            </div>
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }

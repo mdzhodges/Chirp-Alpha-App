@@ -4,7 +4,7 @@
   justify-content: center;
   gap: 12px;
   align-items: flex-end;
-  margin-top: 32px;
+  
 }
 
 .inputGroup {
@@ -21,14 +21,14 @@
 }
 
 .input {
-  padding: 12px 16px;
+  padding: 8px 12px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background-color: var(--bg-secondary);
   color: var(--text-main);
   font-family: var(--font-body);
-  font-size: 1rem;
-  min-width: 240px;
+  font-size: 0.9rem;
+  min-width: 180px;
   transition: border-color 0.2s;
 }
 
@@ -38,7 +38,7 @@
 }
 
 .button {
-  padding: 12px 24px;
+  padding: 8px 16px;
   border-radius: 8px;
   border: none;
   background-color: var(--accent-green);
