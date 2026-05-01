@@ -19,6 +19,7 @@
 - [Fusion & Output Layer](#fusion--output-layer)
 - [Training Setup](#training-setup)
 - [Equities To Follow](#equities-to-follow)
+- [Algorithmic Trading Execution](#algorithmic-trading-execution)
 
 ---
 
@@ -116,5 +117,20 @@ These assets were chosen to provide exposure across different sectors of the mar
 ![JPM](https://img.shields.io/badge/JPM-JPMorgan%20Chase-0C2340?logo=jpmorganchase&logoColor=white)
 
 ![GS](https://img.shields.io/badge/GS-Goldman%20Sachs-7399C6?logo=goldmansachs&logoColor=white)
+
+---
+
+### **Algorithmic Trading Execution**
+
+(1) Prior to the start of each trading session (9:30 AM EST) the model will be run for each equity in the [Equities To Follow](#algorithmic-trading-execution) section.
+
+(2) The model will output the following metrics for each equity:
+
+    (1) The magnitude of growth / shrinkage for a given equity for the next 5 trading days
+    (2) Accuracy percentage for the growth / shrinkage of a given equity for the following 5 trading days
+
+(3) The trades will be executed via the Alpaca Markets paper trading API.
+
+(4) This process will be repeated prior to the start of each trading session.
 
 ---
