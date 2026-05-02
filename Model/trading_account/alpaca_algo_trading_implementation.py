@@ -26,9 +26,10 @@ class AlpacaAlgoTradingImplementation:
     def __init__(self) -> None:
         self._bar_queue: queue.Queue[dict] = queue.Queue()
         self._bar_history: deque[dict] = deque(maxlen=5000)
-        self._alpaca_api_key = os.getenv("ALPACA_API_KEY", "")
-        self._alpaca_api_key_secret = os.getenv("ALPACA_API_KEY_SECRET", "")
+        self._alpaca_api_key = os.getenv(Constants.ALPACA_API_KEY, "")
+        self._alpaca_api_key_secret = os.getenv(Constants.ALPACA_API_KEY_SECRET, "")
         self._close_of_market_time: time = time(16, 0)
+        self._current_time_est: time = datetime.now().astimezone(ZoneInfo("America/New_York")).time()
 
         self._trading_client: TradingClient = TradingClient(api_key=self._alpaca_api_key,
                                                             secret_key=self._alpaca_api_key_secret, paper=True)
@@ -57,7 +58,7 @@ class AlpacaAlgoTradingImplementation:
 
             current_time_step: int = 1
 
-            while True:
+            if self._current_time_est < self._close_of_market_time:
 
                 account_dict: dict[str, Any] = self._alpaca_trading_portfolio.get_account_dict()
                 all_positions_list: list[Position] = self._trading_client.get_all_positions()
@@ -66,47 +67,43 @@ class AlpacaAlgoTradingImplementation:
 
                 state_data_dict: dict = await asyncio.to_thread(self._bar_queue.get)
 
-                random_action: OrderSide | str = self._get_random_order_side_action()
+                portfolio_cash: float = account_dict.get("cash", 0.0)
+                portfolio_equity: float = account_dict.get("equity", 0.0)
+                current_datetime: datetime = datetime.now().astimezone(ZoneInfo("America/New_York"))
 
-                if random_action != "HOLD":
-                    portfolio_cash: float = account_dict.get("cash", 0.0)
-                    portfolio_equity: float = account_dict.get("equity", 0.0)
-                    current_datetime: datetime = datetime.now().astimezone(ZoneInfo("America/New_York"))
+                print(
+                    f"Timestep: {current_time_step} -> Timestamp: {current_datetime.time()} -> Portfolio Equity: {portfolio_equity:,.2f} -> Portfolio Cash Available: ${portfolio_cash:,.2f}")
+                print("=" * 150)
 
-                    print(
-                        f"Timestep: {current_time_step} -> Timestamp: {current_datetime.time()} -> Portfolio Equity: {portfolio_equity:,.2f} -> Portfolio Cash Available: ${portfolio_cash:,.2f}")
-                    print("=" * 150)
+                model_predictions_dict: dict = self._get_model_predictions_dict()
 
-                else:
-                    print(f"Action Selected -> {random_action}")
-                    continue
-
-                portfolio_dict: dict[
-                    str, tuple[int, float, OrderSide]] = self._get_random_quantity_per_symbol_dict(
-                    account_dict=account_dict,
-                    all_positions_list=all_positions_list)
-
-                self.execute_market_orders(portfolio_dict=portfolio_dict)
-
-                current_time_est: time = datetime.now().astimezone(ZoneInfo("America/New_York")).time()
-
-                if current_time_est >= self._close_of_market_time:
-                    print(f"Broken at timestep: {current_time_step}")
-                    print("=" * 200)
-                    break
-
-                current_time_step += 1
+                self.execute_market_orders(model_predictions_dict=model_predictions_dict)
 
             await stream_task
 
         except Exception as e:
             print(f"Exception Thrown: {e}")
 
-    def execute_market_orders(self, portfolio_dict: dict[str, tuple[int, float, OrderSide]]) -> None:
+    def _get_model_predictions_dict(self) -> dict:
+
+        model_predictions_dict:dict = {}
+
+        # TODO: Implement the following logic:
+        #  (1) A given equity will never exceed it's equal weight in reference to other equities in the portfolio
+        #  (2) If the momentum of the equity is down but there are no shares to sell, then no trade is executed
+        #  (3) If the momentum of the equity is up but there is no available cash, then no trade is executed
+        #  (4) Based on the predicted percentage the model outputs for upward momentum of a given equity the MAXIMUM amount (equally weighted) will be purchased
+        #  (5)
+
+        return model_predictions_dict
+
+
+
+    def execute_market_orders(self, model_predictions_dict: dict) -> None:
 
         try:
 
-            for ticker_symbol_str, ticker_symbol_tuple in portfolio_dict.items():
+            for ticker_symbol_str, ticker_symbol_tuple in model_predictions_dict.items():
 
                 stock_quantity: int = ticker_symbol_tuple[0]
                 stock_price: float = float(ticker_symbol_tuple[1])
