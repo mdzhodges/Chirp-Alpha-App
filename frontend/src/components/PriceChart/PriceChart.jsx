@@ -66,10 +66,8 @@ export default function PriceChart({ history, ticker, mode = "candlestick" }) {
     const fiveDaysInMs = 5 * 24 * 60 * 60 * 1000;
     const expectedTime = ts - fiveDaysInMs;
 
-    // Sort momentum data by time just in case
     const sortedMom = [...momentumData].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
-    // Find the two surrounding points for interpolation
     let p1 = null;
     let p2 = null;
 
@@ -84,20 +82,17 @@ export default function PriceChart({ history, ticker, mode = "candlestick" }) {
     }
 
     if (p1 && p2) {
-      // Linear Interpolation: fluid transition between daily points
       const t1 = new Date(p1.timestamp).getTime();
       const t2 = new Date(p2.timestamp).getTime();
       const ratio = (expectedTime - t1) / (t2 - t1);
       const interpolatedValue = p1.value + (p2.value - p1.value) * ratio;
       return { x: ts, y: interpolatedValue };
     } else if (p1) {
-      // Edge case: if we only have the point before, check if it's close enough
       const t1 = new Date(p1.timestamp).getTime();
       if (Math.abs(expectedTime - t1) < 24 * 60 * 60 * 1000) {
         return { x: ts, y: p1.value };
       }
     }
-    
     return null;
   }).filter(p => p !== null);
 
@@ -117,8 +112,17 @@ export default function PriceChart({ history, ticker, mode = "candlestick" }) {
                 label: 'Price',
                 data: candlestickData,
                 yAxisID: 'y',
-                color: { up: '#22c55e', down: '#ef4444', unchanged: '#9ca3af' },
-                borderColor: { up: '#22c55e', down: '#ef4444', unchanged: '#9ca3af' },
+                // Using explicit standard colors
+                color: {
+                  up: '#22c55e',
+                  down: '#ef4444',
+                  unchanged: '#9ca3af'
+                },
+                borderColor: {
+                  up: '#22c55e',
+                  down: '#ef4444',
+                  unchanged: '#9ca3af'
+                },
                 borderWidth: 1.5,
                 barPercentage: 0.8,
               }
@@ -152,6 +156,21 @@ export default function PriceChart({ history, ticker, mode = "candlestick" }) {
             responsive: true,
             maintainAspectRatio: false,
             animation: { duration: 0 },
+            // Target the specific element controller as advised
+            elements: {
+              candlestick: {
+                color: {
+                  up: '#22c55e',    // Emerald Green
+                  down: '#ef4444',  // Bright Red
+                  unchanged: '#9ca3af',
+                },
+                borderColor: {
+                  up: '#22c55e',
+                  down: '#ef4444',
+                  unchanged: '#9ca3af',
+                }
+              }
+            },
             plugins: {
               legend: {
                 display: true,
