@@ -7,7 +7,6 @@ NC='\033[0m'
 echo -e "${BLUE}Starting Chirp Alpha App services from Model directory...${NC}"
 
 cleanup() {
-    echo -e "\n${CYAN}Stopping all services...${NC}"
     kill 0
 }
 trap cleanup SIGINT SIGTERM
@@ -35,6 +34,10 @@ else
     echo -e "${NC}Warning: No .env file found at $ROOT_DIR/.env${NC}"
 fi
 
+# 3. Start Frontend
+echo -e "${GREEN}[3/3] Starting Frontend (Vite/React)...${NC}"
+(cd "$ROOT_DIR/frontend" && npm run dev) &
+
 # 1. Start gRPC Server
 echo -e "${GREEN}[1/3] Starting gRPC Server (Python/Poetry)...${NC}"
 (cd "$ROOT_DIR/grpc" && poetry run python momentum_server.py) &
@@ -42,10 +45,5 @@ echo -e "${GREEN}[1/3] Starting gRPC Server (Python/Poetry)...${NC}"
 # 2. Start Backend
 echo -e "${GREEN}[2/3] Starting Backend (Spring Boot)...${NC}"
 (cd "$ROOT_DIR/backend" && ./mvnw spring-boot:run) &
-
-# 3. Start Frontend
-echo -e "${GREEN}[3/3] Starting Frontend (Vite/React)...${NC}"
-(cd "$ROOT_DIR/frontend" && npm run dev) &
-
 echo -e "${BLUE}All services are running. Press Ctrl+C to stop all.${NC}"
 wait

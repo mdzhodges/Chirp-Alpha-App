@@ -514,7 +514,7 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
             
             if raw_output.dim() == 3:
                 raw_output = raw_output[:, -1, :]
-                
+
             standardized_val = raw_output.squeeze().item()
             unstandardized_val = (standardized_val * m["target_std"]) + m["target_mean"]
             
@@ -551,6 +551,8 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
 
     def PredictMomentum(self, request, context):
         try:
+
+            print(request.ticker)
             model_id = request.model_type or "ensemble"
                 
             stock_feats = self._build_stock_features(request.stock_history, request.ticker)
