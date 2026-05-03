@@ -242,7 +242,7 @@ def walkforward(lr: float, dropout: float, noise_std: float, con_lambda: float):
                            trainer.output_network, stock_scaler, spy_scaler, stock_cols, spy_cols,
                            val_tweet_embeddings=test_tweet_emb, val_tweet_counts=test_tweet_counts,
                            target_mean=trainer.target_mean, target_std=trainer.target_std,
-                           pca_stock=pca_stock, pca_spy=pca_spy)
+                           pca_stock=pca_stock, pca_spy=pca_spy, label="TEST")
 
         all_results.append(results)
         del trainer
@@ -270,16 +270,20 @@ def run_experiment(params):
     }
 
 def main():
-    # Strategic 8-combo grid for Attention-Fusion + Contrastive + Gaussian
+    # Strategic 12-combo grid focusing on High Regularization + High Contrastive
     combos = [
-        (2e-5, 0.2, 0.01, 0.05),  # Baseline
-        (2e-5, 0.2, 0.05, 0.05),  # High Noise
-        (2e-5, 0.2, 0.01, 0.1),   # High Contrastive
-        (5e-5, 0.2, 0.01, 0.05),  # Faster LR
-        (2e-5, 0.1, 0.01, 0.05),  # Low Dropout
-        (2e-5, 0.3, 0.05, 0.1),   # Heavy Regularization
-        (1e-5, 0.2, 0.01, 0.05),  # Slow LR
-        (5e-5, 0.3, 0.02, 0.05),  # Balanced
+        (5e-5, 0.3, 0.05, 0.10),  # Combo 1: Best of both worlds
+        (5e-5, 0.3, 0.05, 0.15),  # Combo 2: Higher Contrastive
+        (8e-5, 0.3, 0.05, 0.10),  # Combo 3: Higher LR
+        (2e-5, 0.4, 0.05, 0.10),  # Combo 4: Extreme Dropout
+        (5e-5, 0.3, 0.10, 0.10),  # Combo 5: Heavy Noise
+        (3e-5, 0.3, 0.03, 0.08),  # Combo 6: Interpolation
+        (5e-5, 0.3, 0.05, 0.05),  # Combo 7: Validation
+        (1e-4, 0.35, 0.05, 0.10), # Combo 8: Aggressive
+        (5e-5, 0.3, 0.05, 0.20),  # Combo 9: Contrastive Max
+        (4e-5, 0.25, 0.02, 0.12), # Combo 10: Balanced Mid
+        (2e-5, 0.3, 0.05, 0.10),  # Combo 11: Control (Previous Best)
+        (6e-5, 0.3, 0.04, 0.07),  # Combo 12: Fine-tuning
     ]
 
     results_list = [run_experiment(combo) for combo in combos]

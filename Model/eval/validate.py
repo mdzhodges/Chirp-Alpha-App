@@ -24,6 +24,7 @@ def validate(
     target_std: float = 1.0,
     pca_stock=None,
     pca_spy=None,
+    label: str = "VAL",
 ):
     try:
         device = next(output_network.parameters()).device
@@ -73,11 +74,9 @@ def validate(
     stock_tensor_all = extract_features(val_data['stock'].tolist(), expected_stock_cols, stock_scaler, pca_model=pca_stock, tickers=val_tickers)
     spy_tensor_all = extract_features(val_data['spy'].tolist(), expected_spy_cols, spy_scaler, pca_model=pca_spy)
     
-    # Validation targets: apply daily de-meaning to evaluate Alpha consistency
+    # Validation targets: Use RAW momentum for Absolute Signal Evaluation
+    val_momentum_raw_abs = val_data['momentum'].values.copy() 
     val_momentum_raw = val_data['momentum'].values
-    if 'Date' in val_data.columns:
-        daily_means = val_data.groupby('Date')['momentum'].transform('mean')
-        val_momentum_raw = val_momentum_raw - daily_means.to_numpy()
     
     momentum_targets = torch.tensor(val_momentum_raw, dtype=torch.float32)
     
@@ -183,33 +182,33 @@ def validate(
     down_mask = targets_momentum < 0
 
     # After computing preds and targets_momentum
-    print(f"Target stats: min={targets_momentum.min():.2f}, max={targets_momentum.max():.2f}")
-    print(f"Target |x|>20: {(np.abs(targets_momentum) > 20).sum()} / {len(targets_momentum)}")
-    print(f"Target |x|>50: {(np.abs(targets_momentum) > 50).sum()} / {len(targets_momentum)}")
-    print(f"Target |x|>100: {(np.abs(targets_momentum) > 100).sum()} / {len(targets_momentum)}")
+    print(f"[{label}] Target stats: min={targets_momentum.min():.2f}, max={targets_momentum.max():.2f}")
+    print(f"[{label}] Target |x|>20: {(np.abs(targets_momentum) > 20).sum()} / {len(targets_momentum)}")
+    print(f"[{label}] Target |x|>50: {(np.abs(targets_momentum) > 50).sum()} / {len(targets_momentum)}")
+    print(f"[{label}] Target |x|>100: {(np.abs(targets_momentum) > 100).sum()} / {len(targets_momentum)}")
     
     # Robust metrics
     median_ae = np.median(np.abs(preds - targets_momentum))
     rank_corr, _ = spearmanr(preds, targets_momentum)
-    print(f"Median AE: {median_ae:.4f}")
-    print(f"Spearman rank corr: {rank_corr:.4f}")
-    print(f"Hybrid Loss: {hybrid_loss:.4f} (MSE: {mse_val:.4f}, Sign: {sign_penalty:.4f}, Mean: {mean_penalty:.4f})")
+    print(f"[{label}] Median AE: {median_ae:.4f}")
+    print(f"[{label}] Spearman rank corr: {rank_corr:.4f}")
+    print(f"[{label}] Hybrid Loss: {hybrid_loss:.4f} (MSE: {mse_val:.4f}, Sign: {sign_penalty:.4f}, Mean: {mean_penalty:.4f})")
     
     # R² on the bulk of data (excluding extreme outliers)
     mask_bulk = np.abs(targets_momentum) <= 20
     r2_bulk = r2_score(targets_momentum[mask_bulk], preds[mask_bulk])
-    print(f"R² on |target|<=20 ({mask_bulk.sum()} rows): {r2_bulk:.4f}")
+    print(f"[{label}] R² on |target|<=20 ({mask_bulk.sum()} rows): {r2_bulk:.4f}")
 
     unclipped_mask = np.abs(targets_momentum) < 30
     if unclipped_mask.sum() > 100:
         rank_corr_unclipped, _ = spearmanr(preds[unclipped_mask], targets_momentum[unclipped_mask])
-        print(f"Spearman (unclipped only, {unclipped_mask.sum()} rows): {rank_corr_unclipped:.4f}")
+        print(f"[{label}] Spearman (unclipped only, {unclipped_mask.sum()} rows): {rank_corr_unclipped:.4f}")
     
     clipped_mask = ~unclipped_mask
     if clipped_mask.sum() > 0:
-        print(f"Clipped rows ({clipped_mask.sum()}): mean pred = {preds[clipped_mask].mean():.2f}, "
+        print(f"[{label}] Clipped rows ({clipped_mask.sum()}): mean pred = {preds[clipped_mask].mean():.2f}, "
               f"mean target = {targets_momentum[clipped_mask].mean():.2f}")
-    print(f"Unclipped: mean pred = {preds[unclipped_mask].mean():.2f}, "
+    print(f"[{label}] Unclipped: mean pred = {preds[unclipped_mask].mean():.2f}, "
           f"mean target = {targets_momentum[unclipped_mask].mean():.2f}")
 
     unique_dates_val = val_data['Date'].unique()
@@ -221,12 +220,36 @@ def validate(
         sp, _ = spearmanr(preds[mask], targets_momentum[mask])
         if not np.isnan(sp):
             date_spearmans.append(sp)
-    print(f"Date-wise Spearman: mean={np.mean(date_spearmans):.4f}, median={np.median(date_spearmans):.4f}")
+    print(f"[{label}] Date-wise Spearman: mean={np.mean(date_spearmans):.4f}, median={np.median(date_spearmans):.4f}")
 
     up_accuracy = np.mean(np.sign(preds[up_mask]) == np.sign(targets_momentum[up_mask])) if up_mask.any() else 0.0
     down_accuracy = np.mean(np.sign(preds[down_mask]) == np.sign(targets_momentum[down_mask])) if down_mask.any() else 0.0
 
-    print(f'Up accuracy: {up_accuracy}, Down accuracy: {down_accuracy}')
+    # Precision: P(actual sign | predicted sign)
+    pred_up_mask = preds > 0
+    pred_down_mask = preds < 0
+    
+    up_precision = np.mean(np.sign(targets_momentum[pred_up_mask]) == np.sign(preds[pred_up_mask])) if pred_up_mask.any() else 0.0
+    down_precision = np.mean(np.sign(targets_momentum[pred_down_mask]) == np.sign(preds[pred_down_mask])) if pred_down_mask.any() else 0.0
+
+    print(f'[{label}] ALPHA Up Recall (Sens.): {up_accuracy:.4f}, Down Recall (Spec.): {down_accuracy:.4f}')
+    print(f'[{label}] ALPHA Up Precision: {up_precision:.4f}, Down Precision: {down_precision:.4f}')
+
+    # Raw (Absolute) Performance: Is it actually green or red in the real world?
+    raw_directional_acc = np.mean(np.sign(preds) == np.sign(val_momentum_raw_abs))
+    
+    abs_up_mask = val_momentum_raw_abs > 0
+    abs_down_mask = val_momentum_raw_abs < 0
+    
+    abs_up_recall = np.mean(np.sign(preds[abs_up_mask]) == np.sign(val_momentum_raw_abs[abs_up_mask])) if abs_up_mask.any() else 0.0
+    abs_down_recall = np.mean(np.sign(preds[abs_down_mask]) == np.sign(val_momentum_raw_abs[abs_down_mask])) if abs_down_mask.any() else 0.0
+    
+    abs_up_precision = np.mean(np.sign(val_momentum_raw_abs[pred_up_mask]) == np.sign(preds[pred_up_mask])) if pred_up_mask.any() else 0.0
+    abs_down_precision = np.mean(np.sign(val_momentum_raw_abs[pred_down_mask]) == np.sign(preds[pred_down_mask])) if pred_down_mask.any() else 0.0
+    
+    print(f'[{label}] RAW (Absolute) Directional Accuracy: {raw_directional_acc:.4f}')
+    print(f'[{label}] RAW Up Precision: {abs_up_precision:.4f}, RAW Down Precision: {abs_down_precision:.4f}')
+    print(f'[{label}] RAW Up Recall: {abs_up_recall:.4f}, RAW Down Recall: {abs_down_recall:.4f}')
 
     # Restore modes
     if encoder is not None and prev_modes["encoder"] is not None:
@@ -235,4 +258,4 @@ def validate(
     index_network.train(prev_modes["index_network"])
     output_network.train(prev_modes["output_network"])
     
-    return huber_val, mean_l1_val, r_squared, directional_accuracy, up_accuracy, down_accuracy, rank_corr, hybrid_loss
+    return huber_val, mean_l1_val, r_squared, directional_accuracy, up_accuracy, down_accuracy, rank_corr, hybrid_loss, r2_bulk

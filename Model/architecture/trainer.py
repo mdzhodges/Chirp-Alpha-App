@@ -83,12 +83,11 @@ class Trainer:
         momentum_values = pd.to_numeric(train_data['momentum'], errors='coerce').to_numpy()
         momentum_values = np.nan_to_num(momentum_values, nan=0.0, posinf=0.0, neginf=0.0)
         
-        if 'Date' in train_data.columns:
-            print("Applying daily de-meaning to training targets (Alpha learning)...")
-            daily_means = train_data.groupby('Date')['momentum'].transform('mean')
-            momentum_values = momentum_values - daily_means.to_numpy()
-
-        self.target_mean = momentum_values.mean()
+        # We no longer de-mean by the median. 
+        # The user wants Absolute Direction: Positive Pred = Green Stock, Negative = Red Stock.
+        
+        # FORCE zero-centered scaling to prevent bearish/bullish bias shift
+        self.target_mean = 0.0
         self.target_std = momentum_values.std() + 1e-9
         
         self.train_momentum = torch.tensor(momentum_values, dtype=torch.float32).unsqueeze(1)
@@ -102,10 +101,9 @@ class Trainer:
         smooth_counts = counts + 0.01 * total 
         bin_weights_np = (total / len(counts)) / smooth_counts
         
-        mid = len(bin_weights_np) // 2
-        sym_weights = (bin_weights_np[:mid][::-1] + bin_weights_np[mid:]) / 2
-        bin_weights_np[:mid] = sym_weights[::-1]
-        bin_weights_np[mid:] = sym_weights
+        # We NO LONGER symmetrize weights.
+        # This allows the rarer 'Down' moves to naturally have higher weight
+        # than the more common 'Up' moves in a drift-positive market.
         
         neg_mask = bins[1:] <= 0
         pos_mask = bins[:-1] >= 0
@@ -162,13 +160,12 @@ class Trainer:
         self.index_network.to(self.device)
         self.output_network.to(self.device)
 
-    def supervised_contrastive_loss(self, latents, targets, temperature=0.1):
+    def supervised_contrastive_loss(self, latents, targets, weights=None, temperature=0.1):
         """
         Pulls together samples with the same momentum sign, pushes apart different ones.
         """
-        # Discretize targets into signs: 1 (Pos), -1 (Neg), 0 (Neu)
-        labels = torch.where(targets > 0.5, torch.tensor(1.0).to(self.device), 
-                             torch.where(targets < -0.5, torch.tensor(-1.0).to(self.device), torch.tensor(0.0).to(self.device)))
+        # Strictly binary discretization: 1 (Pos), -1 (Neg)
+        labels = torch.where(targets > 0, torch.tensor(1.0).to(self.device), torch.tensor(-1.0).to(self.device))
         
         latents = F.normalize(latents, p=2, dim=1)
         logits = torch.matmul(latents, latents.T) / temperature
@@ -189,7 +186,11 @@ class Trainer:
         
         mean_log_prob_pos = (mask * log_prob).sum(1) / (mask.sum(1) + 1e-9)
         
-        loss = -mean_log_prob_pos.mean()
+        if weights is not None:
+            # Weighted average loss across the batch
+            loss = -(mean_log_prob_pos * weights.squeeze()).sum() / (weights.sum() + 1e-9)
+        else:
+            loss = -mean_log_prob_pos.mean()
         return loss
 
     def early_stopping(
@@ -205,7 +206,7 @@ class Trainer:
             pca_stock=None,
             pca_spy=None,
     ):
-        val_mean_squared_val, val_l1, val_r2, val_directional_accuracy, val_up_acc, val_down_acc, val_spearman, val_hybrid_loss = validate(
+        val_mean_squared_val, val_l1, val_r2, val_directional_accuracy, val_up_acc, val_down_acc, val_spearman, val_hybrid_loss, val_r2_bulk = validate(
             val_data,
             self.encoder,
             self.stock_network,
@@ -221,8 +222,9 @@ class Trainer:
             target_std=self.target_std,
             pca_stock=pca_stock,
             pca_spy=pca_spy,
+            label="VAL",
         )
-        train_mean_sqaure, train_l1, train_r2, train_directional_accuracy, train_up_acc, train_down_acc, train_spearman, train_hybrid_loss = validate(
+        train_results = validate(
             self.train_data,
             self.encoder,
             self.stock_network,
@@ -238,7 +240,10 @@ class Trainer:
             target_std=self.target_std,
             pca_stock=pca_stock,
             pca_spy=pca_spy,
+            label="TRAIN",
         )
+        # Unpack train results
+        train_mean_sqaure, train_l1, train_r2, train_directional_accuracy, train_up_acc, train_down_acc, train_spearman, train_hybrid_loss, train_r2_bulk = train_results
 
         self.val_error.append(val_mean_squared_val)
         self.train_error.append(train_mean_sqaure)
@@ -254,12 +259,13 @@ class Trainer:
         self.hybrid_loss_train.append(train_hybrid_loss)
 
         if epoch < self.min_epoch_early:
-            return val_mean_squared_val, val_l1, val_r2, val_directional_accuracy, val_up_acc, val_down_acc, val_spearman, val_hybrid_loss
+            return val_mean_squared_val, val_l1, val_r2, val_directional_accuracy, val_up_acc, val_down_acc, val_spearman, val_hybrid_loss, val_r2_bulk
 
         current_directional_score = min(val_up_acc, val_down_acc) - (abs(val_up_acc - val_down_acc) * 0.5)
 
-        if val_r2 > self.best_r2:
-            self.best_r2 = val_r2
+        # Use Bulk R2 (excluding extreme outliers) for deciding the "Best" model
+        if val_r2_bulk > self.best_r2:
+            self.best_r2 = val_r2_bulk
             self.best_directional_score = current_directional_score
             self.best_val_mean_squared_val = val_mean_squared_val
             self.best_model_state = {
@@ -283,13 +289,14 @@ class Trainer:
                     'best_val_directional_score': current_directional_score,
                     'best_val_up_acc': val_up_acc,
                     'best_val_down_acc': val_down_acc,
+                    'best_val_r2_bulk': val_r2_bulk,
                 },
                 'target_stats': {'mean': self.target_mean, 'std': self.target_std},
                 'scalers': {'stock_scaler': self.stock_scaler, 'spy_scaler': self.spy_scaler},
                 'pca_models': {'pca_stock': self.pca_stock, 'pca_spy': self.pca_spy},
                 'feature_cols': {'stock': self.stock_cols, 'spy': self.spy_cols},
             }, model_path)
-            print(f"New best model found at epoch {epoch} (Score: {current_directional_score:.4f}). Best R2: {val_r2:.4f}")
+            print(f"New best model found at epoch {epoch} (Score: {current_directional_score:.4f}). Best Bulk R2: {val_r2_bulk:.4f}")
 
             self.early_stopping_counter = 0
         else:
@@ -298,7 +305,7 @@ class Trainer:
         if val_up_acc > 0.52 and val_down_acc > 0.52 and abs(val_up_acc - val_down_acc) < 0.01:
             self.early_stopping_counter = self.early_stopping_patience
 
-        return val_mean_squared_val, val_l1, val_r2, val_directional_accuracy, val_up_acc, val_down_acc, val_spearman, val_hybrid_loss
+        return val_mean_squared_val, val_l1, val_r2, val_directional_accuracy, val_up_acc, val_down_acc, val_spearman, val_hybrid_loss, val_r2_bulk
 
     def train(
             self,
@@ -385,14 +392,28 @@ class Trainer:
                     scaled_target = (target - self.target_mean) / self.target_std
                     base_loss = F.huber_loss(prediction, scaled_target, reduction='none', delta=1.0)
                     
+                    # Soft-Magnitude Sign Penalty: Care about direction, but give more weight to larger moves
+                    # using log-scaling to prevent outliers from dominating.
                     sign_mismatch = (torch.sign(prediction) != torch.sign(scaled_target)).float()
-                    sign_penalty = sign_mismatch * torch.abs(scaled_target)
+                    soft_magnitude = torch.log1p(torch.abs(scaled_target))
                     
+                    # Bearish Intensity: penalize False Positives slightly more to maintain balance
+                    false_positive_mask = (torch.sign(prediction) > 0) & (torch.sign(scaled_target) <= 0)
+                    directional_intensity = 1.0 + (false_positive_mask.float() * 0.25)
+                    
+                    # Combined Directional Loss
                     weighted_base = (base_loss * weights).mean()
-                    weighted_sign = (sign_penalty * weights).mean()
-                    con_loss = self.supervised_contrastive_loss(fused_latent, target)
+                    weighted_sign = (sign_mismatch * soft_magnitude * weights * directional_intensity).mean()
                     
-                    total_loss = weighted_base + weighted_sign + (self.contrastive_lambda * con_loss)
+                    # Use RAW targets for sign labels in contrastive loss to avoid scaling bias
+                    con_loss = self.supervised_contrastive_loss(fused_latent, target, weights=weights)
+                    
+                    # Bias Penalty: Force the model's average prediction to match ZERO (Perfect Neutrality)
+                    # This prevents the model from drifting with the market's positive mean.
+                    bias_penalty = F.mse_loss(prediction.mean(), torch.tensor(0.0).to(self.device))
+                    
+                    # We increase the weight of sign loss now that it's magnitude-invariant
+                    total_loss = weighted_base + (2.0 * weighted_sign) + (self.contrastive_lambda * con_loss) + (0.5 * bias_penalty)
 
                 self.global_optimizer.zero_grad()
                 self.scaler.scale(total_loss).backward()
@@ -406,7 +427,7 @@ class Trainer:
             metrics = self.early_stopping(test_data, stock_scaler, spy_scaler, stock_cols, spy_cols, epoch, 
                                          val_tweet_embeddings=val_tweet_embeddings, val_tweet_counts=val_tweet_counts,
                                          pca_stock=pca_stock, pca_spy=pca_spy)
-            self.scheduler.step(metrics[-1])
+            self.scheduler.step(metrics[-2])
 
             if self.early_stopping_counter >= self.early_stopping_patience:
                 print(f'Early stopping at epoch {epoch} run={self.run_name}')

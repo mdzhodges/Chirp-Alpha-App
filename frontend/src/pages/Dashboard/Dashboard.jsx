@@ -148,7 +148,7 @@ export default function Dashboard() {
           <div className={styles.priceRow}>
             <div className={styles.price}>{priceFormatted}</div>
             <div className={`${styles.change} ${isUp ? styles.changeUp : styles.changeDown}`}>
-              {isUp ? "▲" : "▼"} {Math.abs(change).toFixed(2)} ({Math.abs(changePercent).toFixed(2)}%)
+              {isUp ? "▲" : "▼"} {Math.abs(change).toFixed(2)} ({Math.abs(changePercent * 100).toFixed(2)}%)
             </div>
           </div>
         </div>

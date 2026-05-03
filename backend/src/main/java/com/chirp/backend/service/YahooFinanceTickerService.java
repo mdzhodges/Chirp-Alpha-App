@@ -359,7 +359,7 @@ public class YahooFinanceTickerService {
             case "bearish" -> new TickerResponse.ModelStats("Bearish", 
                 new BigDecimal("0.5158"), new BigDecimal("0.3023"), new BigDecimal("0.7215"), new BigDecimal("0.0441"));
             case "ensemble", "consensus", "high_ic" -> new TickerResponse.ModelStats("Consensus", 
-                new BigDecimal("0.5192"), new BigDecimal("0.4332"), new BigDecimal("0.6021"), new BigDecimal("0.0495"));
+                new BigDecimal("0.5181"), new BigDecimal("0.3863"), new BigDecimal("0.6426"), new BigDecimal("0.0519"));
             default -> new TickerResponse.ModelStats("Balanced", 
                 new BigDecimal("0.5152"), new BigDecimal("0.5189"), new BigDecimal("0.5116"), new BigDecimal("0.0450"));
         };

@@ -11,14 +11,15 @@ def analyze_results():
     summary_data = []
     
     # Column mapping from validate() return values
-    # 0: huber, 1: l1, 2: r2, 3: directional_accuracy, 4: up_accuracy, 5: down_accuracy, 6: rank_corr, 7: hybrid_loss
+    # 0: huber, 1: l1, 2: r2, 3: directional_accuracy, 4: up_accuracy, 5: down_accuracy, 6: rank_corr, 7: hybrid_loss, 8: r2_bulk
     cols = {
-        '2': 'R2',
+        '2': 'R2_Total',
         '3': 'Overall_Acc',
         '4': 'Up_Acc',
         '5': 'Down_Acc',
         '6': 'IC',
-        '7': 'Hybrid_Loss'
+        '7': 'Hybrid_Loss',
+        '8': 'R2_Bulk'
     }
 
     for d in results_dirs:
@@ -41,7 +42,8 @@ def analyze_results():
             
             row = {
                 'Run': name,
-                'R2': last_fold.get('R2', 0),
+                'R2_Total': last_fold.get('R2_Total', 0),
+                'R2_Bulk': last_fold.get('R2_Bulk', 0),
                 'IC': last_fold.get('IC', 0),
                 'Up_Acc': last_fold.get('Up_Acc', 0),
                 'Down_Acc': last_fold.get('Down_Acc', 0),
@@ -61,11 +63,11 @@ def analyze_results():
     summary_df = summary_df.sort_values('Overall_Acc', ascending=False)
     
     print("\n=== Hyperparameter Summary (LAST FOLD ONLY) ===")
-    print(summary_df[['Run', 'Overall_Acc', 'Up_Acc', 'Down_Acc', 'R2', 'IC']].to_string(index=False))
+    print(summary_df[['Run', 'Overall_Acc', 'Up_Acc', 'Down_Acc', 'R2_Bulk', 'IC']].to_string(index=False))
 
     # Visualization
     sns.set(style="whitegrid")
-    metrics_to_plot = ['Overall_Acc', 'Up_Acc', 'Down_Acc', 'R2', 'IC']
+    metrics_to_plot = ['Overall_Acc', 'Up_Acc', 'Down_Acc', 'R2_Bulk', 'IC']
     
     fig, axes = plt.subplots(len(metrics_to_plot), 1, figsize=(12, 4 * len(metrics_to_plot)))
     

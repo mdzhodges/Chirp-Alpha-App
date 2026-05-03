@@ -273,7 +273,7 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
             "balanced": {"up": 0.5189, "down": 0.5116},
             "bullish":  {"up": 0.5288, "down": 0.4991},
             "bearish":  {"up": 0.3023, "down": 0.7215},
-            "high_ic":  {"up": 0.4332, "down": 0.6021}
+            "high_ic":  {"up": 0.3863, "down": 0.6426}
         }
 
         for model_id, filename in model_files.items():
