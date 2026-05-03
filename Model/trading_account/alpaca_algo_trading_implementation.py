@@ -1,6 +1,5 @@
 import asyncio
 import math
-import os
 import queue
 import random
 from asyncio import Task
@@ -23,18 +22,13 @@ from Model.utils.constants import Constants
 # TODO: The portfolio will be equally weighted, remove 'random' logic from below
 class AlpacaAlgoTradingImplementation:
 
-    def __init__(self) -> None:
+    def __init__(self, alpaca_algo_trading_credentials_dict: dict[str, tuple[str, str]]) -> None:
+        self._algorithmic_trading_credentials_dict: dict[str, tuple[str, str]] = alpaca_algo_trading_credentials_dict
+
         self._bar_queue: queue.Queue[dict] = queue.Queue()
         self._bar_history: deque[dict] = deque(maxlen=5000)
-        self._alpaca_api_key = os.getenv(Constants.ALPACA_API_KEY, "")
-        self._alpaca_api_key_secret = os.getenv(Constants.ALPACA_API_KEY_SECRET, "")
         self._close_of_market_time: time = time(16, 0)
         self._current_time_est: time = datetime.now().astimezone(ZoneInfo("America/New_York")).time()
-
-        self._trading_client: TradingClient = TradingClient(api_key=self._alpaca_api_key,
-                                                            secret_key=self._alpaca_api_key_secret, paper=True)
-        self._alpaca_trading_portfolio: AlpacaTradingPortfolio = AlpacaTradingPortfolio(
-            trading_client=self._trading_client)
 
     async def _handle_bar(self, data) -> None:
         bar_dict: dict = data.model_dump()
@@ -46,47 +40,69 @@ class AlpacaAlgoTradingImplementation:
 
     async def execute_trading_algorithm(self) -> None:
 
-        data_stream: StockDataStream = StockDataStream(api_key=self._alpaca_api_key,
-                                                       secret_key=self._alpaca_api_key_secret)
-        print("=" * 100)
-        print("Initializing Trading Environment")
+        for algorithmic_strategy_str, api_key_tuple in self._algorithmic_trading_credentials_dict.items():
+            alpaca_api_key: str = api_key_tuple[0]
+            alpaca_api_key_secret: str = api_key_tuple[1]
 
-        try:
+            print("=" * 100)
+            print(f"Executing Trading Algorithm: {algorithmic_strategy_str}")
+            print("=" * 100)
 
-            data_stream.subscribe_bars(self._handle_bar, *Constants.TICKER_SYMBOL_LIST)
-            stream_task: Task = asyncio.create_task(asyncio.to_thread(data_stream.run))
+            alpaca_api_key = alpaca_api_key
+            alpaca_api_key_secret = alpaca_api_key_secret
 
-            current_time_step: int = 1
+            trading_client: TradingClient = TradingClient(api_key=alpaca_api_key,
+                                                          secret_key=alpaca_api_key_secret,
+                                                          paper=True)
+            alpaca_trading_portfolio: AlpacaTradingPortfolio = AlpacaTradingPortfolio(trading_client=trading_client)
 
-            if self._current_time_est < self._close_of_market_time:
+            data_stream: StockDataStream = StockDataStream(api_key=alpaca_api_key,
+                                                           secret_key=alpaca_api_key_secret)
 
-                account_dict: dict[str, Any] = self._alpaca_trading_portfolio.get_account_dict()
-                all_positions_list: list[Position] = self._trading_client.get_all_positions()
+            try:
 
-                all_positions_list = self._trading_client.get_all_positions()
+                data_stream.subscribe_bars(self._handle_bar, *Constants.TICKER_SYMBOL_LIST)
+                stream_task: Task = asyncio.create_task(asyncio.to_thread(data_stream.run))
 
-                state_data_dict: dict = await asyncio.to_thread(self._bar_queue.get)
+                current_time_step: int = 1
 
-                portfolio_cash: float = account_dict.get("cash", 0.0)
-                portfolio_equity: float = account_dict.get("equity", 0.0)
-                current_datetime: datetime = datetime.now().astimezone(ZoneInfo("America/New_York"))
+                if self._current_time_est < self._close_of_market_time:
+                    account_dict: dict[str, Any] = alpaca_trading_portfolio.get_account_dict()
+                    all_positions_list: list[Position] = trading_client.get_all_positions()
 
-                print(
-                    f"Timestep: {current_time_step} -> Timestamp: {current_datetime.time()} -> Portfolio Equity: {portfolio_equity:,.2f} -> Portfolio Cash Available: ${portfolio_cash:,.2f}")
-                print("=" * 150)
+                    all_positions_list = trading_client.get_all_positions()
 
-                model_predictions_dict: dict = self._get_model_predictions_dict()
+                    state_data_dict: dict = await asyncio.to_thread(self._bar_queue.get)
 
-                self.execute_market_orders(model_predictions_dict=model_predictions_dict)
+                    portfolio_cash: float = account_dict.get("cash", 0.0)
+                    portfolio_equity: float = account_dict.get("equity", 0.0)
+                    current_datetime: datetime = datetime.now().astimezone(ZoneInfo("America/New_York"))
 
-            await stream_task
+                    print(
+                        f"Timestep: {current_time_step} -> Timestamp: {current_datetime.time()} -> Portfolio Equity: {portfolio_equity:,.2f} -> Portfolio Cash Available: ${portfolio_cash:,.2f}")
+                    print("=" * 150)
 
-        except Exception as e:
-            print(f"Exception Thrown: {e}")
+                    model_predictions_dict: dict = self._get_model_predictions_dict()
+
+                    self.execute_market_orders(model_predictions_dict=model_predictions_dict)
+
+                await stream_task
+
+            except Exception as e:
+                print(f"Exception Thrown: {e}")
+
+    def _execute_bullish_trading_algorithm(self) -> None:
+        pass
+
+    def _execute_balanced_trading_algorithm(self) -> None:
+        pass
+
+    def _execute_bearish_trading_algorithm(self) -> None:
+        pass
 
     def _get_model_predictions_dict(self) -> dict:
 
-        model_predictions_dict:dict = {}
+        model_predictions_dict: dict = {}
 
         # TODO: Implement the following logic:
         #  (1) A given equity will never exceed it's equal weight in reference to other equities in the portfolio
@@ -97,9 +113,7 @@ class AlpacaAlgoTradingImplementation:
 
         return model_predictions_dict
 
-
-
-    def execute_market_orders(self, model_predictions_dict: dict) -> None:
+    def execute_market_orders(self, trading_client: TradingClient, model_predictions_dict: dict) -> None:
 
         try:
 
@@ -121,7 +135,7 @@ class AlpacaAlgoTradingImplementation:
                     time_in_force=TimeInForce.DAY
                 )
 
-                market_order: Order = self._trading_client.submit_order(
+                market_order: Order = trading_client.submit_order(
                     order_data=market_order_request
                 )
 
@@ -134,7 +148,6 @@ class AlpacaAlgoTradingImplementation:
 
         except Exception as e:
             print(f"Exception Thrown: {e}")
-
 
     # TODO: Change this from 'random' to the weights of the model predictions
     def _get_random_quantity_per_symbol_dict(self, account_dict: dict[str, Any], all_positions_list: list, ) -> dict[
