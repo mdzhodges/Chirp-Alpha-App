@@ -2,11 +2,6 @@ import torch
 import torch.nn as nn
 
 class OutputNN(nn.Module):
-    """
-    Advanced regression head for Time Series Foundation Models.
-    Optimized for high-variance momentum targets (+/- 30).
-    """
-
     def __init__(
         self,
         _legacy_input_dim: int = None, 
@@ -61,11 +56,10 @@ class OutputNN(nn.Module):
     def init_weights(m):
         """Standardizes initialization for LeakyReLU architectures."""
         if isinstance(m, nn.Linear):
-            # 'a=0.1' matches the LeakyReLU slope for optimal variance
             nn.init.kaiming_normal_(m.weight, a=0.1, nonlinearity='leaky_relu')
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.Parameter) and m.size(0) == 5: # text_dim
+        elif isinstance(m, nn.Parameter) and m.size(0) == 5: 
             nn.init.normal_(m, std=0.01)
 
     def forward(self, x: torch.Tensor, return_latents: bool = False) -> torch.Tensor:

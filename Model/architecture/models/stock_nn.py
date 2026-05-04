@@ -4,7 +4,7 @@ import os
 import torch.nn as nn
 
 STOCK_NN_LR = float(os.environ.get("STOCK_NN_LR", 1e-5))
-STOCK_NN_DROP = float(os.environ.get("STOCK_NN_DROP", 0.05)) # Lower dropout for stable representations
+STOCK_NN_DROP = float(os.environ.get("STOCK_NN_DROP", 0.05)) 
 
 
 class StockNetwork(nn.Module):
@@ -35,5 +35,5 @@ class StockNetwork(nn.Module):
 
     def forward(self, x):
         x = self.input_layer(x)
-        x = x + self.res_block(x) # Residual connection
+        x = x + self.res_block(x)
         return self.output_layer(x)

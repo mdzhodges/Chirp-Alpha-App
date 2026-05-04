@@ -4,7 +4,7 @@ import os
 
 
 INDEX_NN_LR = float(os.environ.get("INDEX_NN_LR", 1e-5))
-INDEX_NN_DROP = float(os.environ.get("INDEX_NN_DROP", 0.05)) # Lower dropout for stable representations
+INDEX_NN_DROP = float(os.environ.get("INDEX_NN_DROP", 0.05))
 
 
 class IndexNetwork(nn.Module):

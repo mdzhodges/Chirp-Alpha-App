@@ -12,9 +12,6 @@ ENCODER_LR = float(os.environ.get("ENCODER_LR", 1e-5))
 class Encoder(nn.Module):
     def __init__(self, model_name="yiyanghkust/finbert-tone"):
         super().__init__()
-        # finbert-tone needs the BertTokenizer/BertModel fallback path:
-        # its tokenizer config trips the fast-tokenizer converter, and its
-        # config.json lacks a model_type field for AutoModel to dispatch on.
         try:
             self.tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
         except (ValueError, OSError):

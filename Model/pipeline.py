@@ -83,14 +83,6 @@ def print_data_info():
         except Exception as e:
             print(f"(skipping tweet count: {e})")
 
-    print(f"=== Dataset Info ===")
-    print(f"Date range: {first} to {last}")
-    print(f"Total rows: {len(data):,}")
-    print(f"Unique tickers: {len(tickers)}")
-    print(f"Total tweets/articles: {num_tweets:,}")
-    print(f"Data format: {DATA_FORMAT}")
-    print(f"Data path: {DATA_PATH}")
-
 
 def _load_tweet_embedding_index(path: str):
     if not path or not os.path.exists(path):
@@ -270,7 +262,6 @@ def run_experiment(params):
     }
 
 def main():
-    # Strategic 12-combo grid focusing on High Regularization + High Contrastive
     combos = [
         (5e-5, 0.3, 0.05, 0.10),  # Combo 1: Best of both worlds
         (5e-5, 0.3, 0.05, 0.15),  # Combo 2: Higher Contrastive
@@ -284,6 +275,14 @@ def main():
         (4e-5, 0.25, 0.02, 0.12), # Combo 10: Balanced Mid
         (2e-5, 0.3, 0.05, 0.10),  # Combo 11: Control (Previous Best)
         (6e-5, 0.3, 0.04, 0.07),  # Combo 12: Fine-tuning
+        (7e-5, 0.35, 0.04, 0.12), # Combo 13: High LR/Dropout
+        (3e-5, 0.2, 0.05, 0.10),  # Combo 14: Low LR/Low Dropout
+        (5e-5, 0.3, 0.08, 0.18),  # Combo 15: High Noise/Contrastive
+        (1e-5, 0.3, 0.05, 0.10),  # Combo 16: Very Conservative
+        (9e-5, 0.4, 0.06, 0.15),  # Combo 17: Very Aggressive
+        (5e-5, 0.3, 0.05, 0.25),  # Combo 18: Contrastive Ultra
+        (4e-5, 0.3, 0.01, 0.10),  # Combo 19: Low Noise
+        (6e-5, 0.45, 0.05, 0.10), # Combo 20: Max Dropout
     ]
 
     results_list = [run_experiment(combo) for combo in combos]

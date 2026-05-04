@@ -19,3 +19,22 @@ module "auth" {
   pool_name   = "chirp_alpha_pool_${var.environment}"
   client_name = "chirp_alpha_client_${var.environment}"
 }
+
+module "networking" {
+  source      = "./modules/networking"
+  environment = var.environment
+}
+
+module "ecr" {
+  source      = "./modules/ecr"
+}
+
+module "compute" {
+  source           = "./modules/compute"
+  environment      = var.environment
+  vpc_id           = module.networking.vpc_id
+  public_subnets   = module.networking.public_subnets
+  backend_repo_url = module.ecr.backend_repo_url
+  frontend_repo_url = module.ecr.frontend_repo_url
+  grpc_repo_url    = module.ecr.grpc_repo_url
+}

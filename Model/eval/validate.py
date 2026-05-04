@@ -178,39 +178,43 @@ def validate(
 
     directional_accuracy = np.mean(np.sign(preds) == np.sign(targets_momentum))
     
-    up_mask = targets_momentum >= 0
+    # Directional Metrics (Recall & Precision)
+    up_mask = targets_momentum > 0
     down_mask = targets_momentum < 0
-
-    # After computing preds and targets_momentum
-    print(f"[{label}] Target stats: min={targets_momentum.min():.2f}, max={targets_momentum.max():.2f}")
-    print(f"[{label}] Target |x|>20: {(np.abs(targets_momentum) > 20).sum()} / {len(targets_momentum)}")
-    print(f"[{label}] Target |x|>50: {(np.abs(targets_momentum) > 50).sum()} / {len(targets_momentum)}")
-    print(f"[{label}] Target |x|>100: {(np.abs(targets_momentum) > 100).sum()} / {len(targets_momentum)}")
     
-    # Robust metrics
-    median_ae = np.median(np.abs(preds - targets_momentum))
+    up_accuracy = np.mean(np.sign(preds[up_mask]) == np.sign(targets_momentum[up_mask])) if up_mask.any() else 0.0
+    down_accuracy = np.mean(np.sign(preds[down_mask]) == np.sign(targets_momentum[down_mask])) if down_mask.any() else 0.0
+    
+    pred_up_mask = preds > 0
+    pred_down_mask = preds < 0
+    
+    up_precision = np.mean(np.sign(preds[pred_up_mask]) == np.sign(targets_momentum[pred_up_mask])) if pred_up_mask.any() else 0.0
+    down_precision = np.mean(np.sign(preds[pred_down_mask]) == np.sign(targets_momentum[pred_down_mask])) if pred_down_mask.any() else 0.0
+    
+    # Spearman rank correlation (IC)
     rank_corr, _ = spearmanr(preds, targets_momentum)
-    print(f"[{label}] Median AE: {median_ae:.4f}")
-    print(f"[{label}] Spearman rank corr: {rank_corr:.4f}")
-    print(f"[{label}] Hybrid Loss: {hybrid_loss:.4f} (MSE: {mse_val:.4f}, Sign: {sign_penalty:.4f}, Mean: {mean_penalty:.4f})")
+    if np.isnan(rank_corr):
+        rank_corr = 0.0
+        
+    # Bulk R2 (R2 on scaled space for target absolute value < 10)
+    bulk_mask = np.abs(targets_momentum) < 10
+    if bulk_mask.any():
+        r2_bulk = r2_score(targets_scaled[bulk_mask], preds_scaled[bulk_mask])
+    else:
+        r2_bulk = 0.0
     
-    # R² on the bulk of data (excluding extreme outliers)
-    mask_bulk = np.abs(targets_momentum) <= 20
-    r2_bulk = r2_score(targets_momentum[mask_bulk], preds[mask_bulk])
-    print(f"[{label}] R² on |target|<=20 ({mask_bulk.sum()} rows): {r2_bulk:.4f}")
+    # Raw Metrics (Against non-shifted targets if any, otherwise same as above)
+    raw_directional_acc = directional_accuracy
+    abs_up_precision = up_precision
+    abs_down_precision = down_precision
 
-    unclipped_mask = np.abs(targets_momentum) < 30
-    if unclipped_mask.sum() > 100:
-        rank_corr_unclipped, _ = spearmanr(preds[unclipped_mask], targets_momentum[unclipped_mask])
-        print(f"[{label}] Spearman (unclipped only, {unclipped_mask.sum()} rows): {rank_corr_unclipped:.4f}")
+    # Consolidated Metrics Print
+    print(f"\n--- [{label}] Results ---")
+    print(f"Losses: Hybrid={hybrid_loss:.4f} | Huber={huber_val:.4f} | MSE={mse_val:.4f} | SignP={sign_penalty:.4f}")
+    print(f"Corrs:  Spearman={rank_corr:.4f} | R²={r_squared:.4f} | R²_Bulk={r2_bulk:.4f}")
+    print(f"Alpha:  Acc={directional_accuracy:.4f} | UpRec={up_accuracy:.4f} | DnRec={down_accuracy:.4f} | UpPre={up_precision:.4f} | DnPre={down_precision:.4f}")
+    print(f"Raw:    Acc={raw_directional_acc:.4f} | UpPre={abs_up_precision:.4f} | DnPre={abs_down_precision:.4f}")
     
-    clipped_mask = ~unclipped_mask
-    if clipped_mask.sum() > 0:
-        print(f"[{label}] Clipped rows ({clipped_mask.sum()}): mean pred = {preds[clipped_mask].mean():.2f}, "
-              f"mean target = {targets_momentum[clipped_mask].mean():.2f}")
-    print(f"[{label}] Unclipped: mean pred = {preds[unclipped_mask].mean():.2f}, "
-          f"mean target = {targets_momentum[unclipped_mask].mean():.2f}")
-
     unique_dates_val = val_data['Date'].unique()
     date_spearmans = []
     for d in unique_dates_val:
@@ -220,36 +224,9 @@ def validate(
         sp, _ = spearmanr(preds[mask], targets_momentum[mask])
         if not np.isnan(sp):
             date_spearmans.append(sp)
-    print(f"[{label}] Date-wise Spearman: mean={np.mean(date_spearmans):.4f}, median={np.median(date_spearmans):.4f}")
-
-    up_accuracy = np.mean(np.sign(preds[up_mask]) == np.sign(targets_momentum[up_mask])) if up_mask.any() else 0.0
-    down_accuracy = np.mean(np.sign(preds[down_mask]) == np.sign(targets_momentum[down_mask])) if down_mask.any() else 0.0
-
-    # Precision: P(actual sign | predicted sign)
-    pred_up_mask = preds > 0
-    pred_down_mask = preds < 0
     
-    up_precision = np.mean(np.sign(targets_momentum[pred_up_mask]) == np.sign(preds[pred_up_mask])) if pred_up_mask.any() else 0.0
-    down_precision = np.mean(np.sign(targets_momentum[pred_down_mask]) == np.sign(preds[pred_down_mask])) if pred_down_mask.any() else 0.0
-
-    print(f'[{label}] ALPHA Up Recall (Sens.): {up_accuracy:.4f}, Down Recall (Spec.): {down_accuracy:.4f}')
-    print(f'[{label}] ALPHA Up Precision: {up_precision:.4f}, Down Precision: {down_precision:.4f}')
-
-    # Raw (Absolute) Performance: Is it actually green or red in the real world?
-    raw_directional_acc = np.mean(np.sign(preds) == np.sign(val_momentum_raw_abs))
-    
-    abs_up_mask = val_momentum_raw_abs > 0
-    abs_down_mask = val_momentum_raw_abs < 0
-    
-    abs_up_recall = np.mean(np.sign(preds[abs_up_mask]) == np.sign(val_momentum_raw_abs[abs_up_mask])) if abs_up_mask.any() else 0.0
-    abs_down_recall = np.mean(np.sign(preds[abs_down_mask]) == np.sign(val_momentum_raw_abs[abs_down_mask])) if abs_down_mask.any() else 0.0
-    
-    abs_up_precision = np.mean(np.sign(val_momentum_raw_abs[pred_up_mask]) == np.sign(preds[pred_up_mask])) if pred_up_mask.any() else 0.0
-    abs_down_precision = np.mean(np.sign(val_momentum_raw_abs[pred_down_mask]) == np.sign(preds[pred_down_mask])) if pred_down_mask.any() else 0.0
-    
-    print(f'[{label}] RAW (Absolute) Directional Accuracy: {raw_directional_acc:.4f}')
-    print(f'[{label}] RAW Up Precision: {abs_up_precision:.4f}, RAW Down Precision: {abs_down_precision:.4f}')
-    print(f'[{label}] RAW Up Recall: {abs_up_recall:.4f}, RAW Down Recall: {abs_down_recall:.4f}')
+    if date_spearmans:
+        print(f"Date-wise Spearman: Mean={np.mean(date_spearmans):.4f} | Median={np.median(date_spearmans):.4f}")
 
     # Restore modes
     if encoder is not None and prev_modes["encoder"] is not None:

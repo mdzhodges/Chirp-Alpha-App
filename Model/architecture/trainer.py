@@ -83,10 +83,6 @@ class Trainer:
         momentum_values = pd.to_numeric(train_data['momentum'], errors='coerce').to_numpy()
         momentum_values = np.nan_to_num(momentum_values, nan=0.0, posinf=0.0, neginf=0.0)
         
-        # We no longer de-mean by the median. 
-        # The user wants Absolute Direction: Positive Pred = Green Stock, Negative = Red Stock.
-        
-        # FORCE zero-centered scaling to prevent bearish/bullish bias shift
         self.target_mean = 0.0
         self.target_std = momentum_values.std() + 1e-9
         
@@ -100,10 +96,6 @@ class Trainer:
         
         smooth_counts = counts + 0.01 * total 
         bin_weights_np = (total / len(counts)) / smooth_counts
-        
-        # We NO LONGER symmetrize weights.
-        # This allows the rarer 'Down' moves to naturally have higher weight
-        # than the more common 'Up' moves in a drift-positive market.
         
         neg_mask = bins[1:] <= 0
         pos_mask = bins[:-1] >= 0
@@ -127,7 +119,6 @@ class Trainer:
 
         self.scaler = torch.amp.GradScaler(device="cuda", enabled=torch.cuda.is_available())
 
-        # Descriptive run name
         self.run_name = f"LR_{self.learning_rate}_DR_{self.dropout}_NS_{self.noise_std}_CON_{self.contrastive_lambda}"
         self.output_dir = f'graphs/{self.run_name}'
         os.makedirs(self.output_dir, exist_ok=True)
@@ -161,10 +152,6 @@ class Trainer:
         self.output_network.to(self.device)
 
     def supervised_contrastive_loss(self, latents, targets, weights=None, temperature=0.1):
-        """
-        Pulls together samples with the same momentum sign, pushes apart different ones.
-        """
-        # Strictly binary discretization: 1 (Pos), -1 (Neg)
         labels = torch.where(targets > 0, torch.tensor(1.0).to(self.device), torch.tensor(-1.0).to(self.device))
         
         latents = F.normalize(latents, p=2, dim=1)
@@ -187,7 +174,6 @@ class Trainer:
         mean_log_prob_pos = (mask * log_prob).sum(1) / (mask.sum(1) + 1e-9)
         
         if weights is not None:
-            # Weighted average loss across the batch
             loss = -(mean_log_prob_pos * weights.squeeze()).sum() / (weights.sum() + 1e-9)
         else:
             loss = -mean_log_prob_pos.mean()
@@ -242,7 +228,6 @@ class Trainer:
             pca_spy=pca_spy,
             label="TRAIN",
         )
-        # Unpack train results
         train_mean_sqaure, train_l1, train_r2, train_directional_accuracy, train_up_acc, train_down_acc, train_spearman, train_hybrid_loss, train_r2_bulk = train_results
 
         self.val_error.append(val_mean_squared_val)
@@ -263,7 +248,6 @@ class Trainer:
 
         current_directional_score = min(val_up_acc, val_down_acc) - (abs(val_up_acc - val_down_acc) * 0.5)
 
-        # Use Bulk R2 (excluding extreme outliers) for deciding the "Best" model
         if val_r2_bulk > self.best_r2:
             self.best_r2 = val_r2_bulk
             self.best_directional_score = current_directional_score
@@ -349,7 +333,8 @@ class Trainer:
         self.global_optimizer = torch.optim.AdamW(param_groups, eps=1e-5, weight_decay=1e-4)
         self.scheduler = ReduceLROnPlateau(self.global_optimizer, mode='min', factor=0.5, patience=3)
 
-        for epoch in tqdm(range(self.num_epochs)):
+        pbar = tqdm(range(self.num_epochs), desc=f"Fold {self.fold}")
+        for epoch in pbar:
             epoch_loss = 0.0
             self.stock_network.train()
             self.index_network.train()
@@ -392,27 +377,19 @@ class Trainer:
                     scaled_target = (target - self.target_mean) / self.target_std
                     base_loss = F.huber_loss(prediction, scaled_target, reduction='none', delta=1.0)
                     
-                    # Soft-Magnitude Sign Penalty: Care about direction, but give more weight to larger moves
-                    # using log-scaling to prevent outliers from dominating.
                     sign_mismatch = (torch.sign(prediction) != torch.sign(scaled_target)).float()
                     soft_magnitude = torch.log1p(torch.abs(scaled_target))
                     
-                    # Bearish Intensity: penalize False Positives slightly more to maintain balance
                     false_positive_mask = (torch.sign(prediction) > 0) & (torch.sign(scaled_target) <= 0)
                     directional_intensity = 1.0 + (false_positive_mask.float() * 0.25)
                     
-                    # Combined Directional Loss
                     weighted_base = (base_loss * weights).mean()
                     weighted_sign = (sign_mismatch * soft_magnitude * weights * directional_intensity).mean()
                     
-                    # Use RAW targets for sign labels in contrastive loss to avoid scaling bias
                     con_loss = self.supervised_contrastive_loss(fused_latent, target, weights=weights)
                     
-                    # Bias Penalty: Force the model's average prediction to match ZERO (Perfect Neutrality)
-                    # This prevents the model from drifting with the market's positive mean.
                     bias_penalty = F.mse_loss(prediction.mean(), torch.tensor(0.0).to(self.device))
                     
-                    # We increase the weight of sign loss now that it's magnitude-invariant
                     total_loss = weighted_base + (2.0 * weighted_sign) + (self.contrastive_lambda * con_loss) + (0.5 * bias_penalty)
 
                 self.global_optimizer.zero_grad()
@@ -423,6 +400,9 @@ class Trainer:
                 self.scaler.update()
 
                 epoch_loss += total_loss.item()
+
+            avg_epoch_loss = epoch_loss / len(train_loader)
+            pbar.set_postfix({"loss": f"{avg_epoch_loss:.4f}"})
 
             metrics = self.early_stopping(test_data, stock_scaler, spy_scaler, stock_cols, spy_cols, epoch, 
                                          val_tweet_embeddings=val_tweet_embeddings, val_tweet_counts=val_tweet_counts,
@@ -460,7 +440,6 @@ class Trainer:
     def _plot_metrics(self):
         epochs = list(range(len(self.train_error)))
         
-        # 1. Huber Loss
         plt.figure(figsize=(10, 6))
         plt.plot(epochs, self.val_error, label="Val Huber")
         plt.plot(epochs, self.train_error, label="Train Huber")
@@ -472,7 +451,6 @@ class Trainer:
         plt.savefig(f'{self.output_dir}/huber_error_fold{self.fold}.png')
         plt.close()
 
-        # 2. Accuracy
         plt.figure(figsize=(10, 6))
         plt.plot(epochs, self.accuracy_val, label="Total Acc", linewidth=2)
         plt.plot(epochs, self.accuracy_up_val, label="Up Acc", linestyle='--')
@@ -486,7 +464,6 @@ class Trainer:
         plt.savefig(f'{self.output_dir}/accuracy_fold{self.fold}.png')
         plt.close()
 
-        # 3. Hybrid Loss & Spearman
         fig, ax1 = plt.subplots(figsize=(10, 6))
         ax1.set_xlabel('Epoch')
         ax1.set_ylabel('Hybrid Loss', color='tab:blue')
@@ -503,7 +480,6 @@ class Trainer:
         plt.savefig(f'{self.output_dir}/hybrid_spearman_fold{self.fold}.png')
         plt.close()
 
-        # 4. R2
         plt.figure(figsize=(10, 6))
         plt.plot(epochs, self.r2_train, label="Train R2")
         plt.plot(epochs, self.r2_val, label="Val R2")

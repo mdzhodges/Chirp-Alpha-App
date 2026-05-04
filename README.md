@@ -133,6 +133,67 @@ These assets were chosen to provide exposure across different sectors of the mar
 (4) This process will be repeated prior to the start of each trading session.
 
 ---
+
+### **Connecting gRPC to Trading Account**
+
+To integrate the gRPC momentum prediction service with the trading logic in `Model/trading_account/alpaca_algo_trading_implementation.py`, follow these technical steps:
+
+#### **1. Initialize the gRPC Client**
+Setup a persistent channel and stub within the `AlpacaAlgoTradingImplementation` class:
+```python
+import grpc
+import momentum_pb2
+import momentum_pb2_grpc
+
+class AlpacaAlgoTradingImplementation:
+    def __init__(self, ...):
+        # ... existing init ...
+        self.channel = grpc.insecure_channel('localhost:50051')
+        self.stub = momentum_pb2_grpc.MomentumServiceStub(self.channel)
+```
+
+#### **2. Implement Data Gathering for Inference**
+The model requires 60 days of historical data for both the target ticker and market indices.
+- **Market History**: Populate a dictionary with `OHLCVList` for `["SPY", "QQQ", "DIA", "^VIX"]`.
+- **Sentiment**: Aggregate recent tweets/posts for the target ticker into a list of strings.
+
+#### **3. Populate `_get_model_predictions_dict`**
+Bridge the gRPC response to Alpaca orders:
+```python
+def _get_model_predictions_dict(self) -> dict:
+    model_predictions_dict = {}
+    for ticker in Constants.TICKER_SYMBOL_LIST:
+        # Construct the request with gathered historical bars and tweets
+        request = momentum_pb2.MomentumRequest(
+            ticker=ticker,
+            stock_history=stock_history,  # List of momentum_pb2.OHLCV
+            market_history=market_history, # Dict of momentum_pb2.OHLCVList
+            tweets=tweets                 # List of strings
+        )
+        
+        # Call the gRPC service
+        response = self.stub.PredictMomentum(request)
+        
+        # Use response.momentum to determine action
+        # Example: Buy if momentum > 0.02, Sell if < -0.02
+        if response.momentum > 0.02:
+            action = OrderSide.BUY
+        elif response.momentum < -0.02:
+            action = OrderSide.SELL
+        else:
+            continue
+            
+        model_predictions_dict[ticker] = (quantity, current_price, action)
+    
+    return model_predictions_dict
+```
+
+#### **4. Execution Flow**
+1. **Start Service**: Run `python grpc/momentum_server.py`.
+2. **Execute Algorithm**: Run the trading implementation which will now query the live gRPC service for momentum signals before submitting orders to Alpaca.
+
+---
+
 Sample Model Outputs from the gRPC
 
 | Index | GS | JPM | SPY | QQQ | BLK | WMT | NVDA | KO | CRWV | AAPL |
