@@ -20,6 +20,7 @@
 - [Training Setup](#training-setup)
 - [Equities To Follow](#equities-to-follow)
 - [Algorithmic Trading Execution](#algorithmic-trading-execution)
+- [Algorithmic Trading Approach](#algorithmic-trading-approach)
 
 ---
 
@@ -240,4 +241,37 @@ The model output is in the form:
     # Line 520 of gRPC server.
     unstandardized_val = (standardized_val * m["target_std"]) + m["target_mean"]
 ```
+---
+
+### **Algorithmic Trading Approach**
+
+The following outlines the policy our trading implementation will follow:
+
+1. When first initializing our portfolio each equity will hold 5% of the portfolio while 50% of the portfolio will be held in cash reserves. 
+- This allows us to purchase more shares in the event of upward momentum and sell shares in the event of downward momentum
+
+2. At all times each equity will carry no less than 2.5% of the total portfolio and no more than 10% of the total portfolio.
+- This will eliminate the possibility of attempting to sell an equity we don't own
+- This will eliminate the possibility of our portfolio becoming too heavy weighted on a single equity
+
+3. In the event an equity has an upward momentum of > 5%, then 0.5% of the total portfolio for that equity will be **purchased** (as long as the maximum holding percentage is not exceeded) 
+
+4. In the event an equity has a downward momentum of > 5%, then 0.5% of that equity will be **sold** (as long as the minimum holding percentage is not passed)
+
+5. This process will be repeated daily
+
+**Extensions To This Policy:**
+
+1. Add more equities
+2. Lower the minimum we hold of a given equity to 1.0%
+3. Increase the maximum we hold of a given equity to 11.5%
+4. Decrease the upward momentum percentage that's required for us to purchase an equity
+- i.e 5% to 4% 
+5. Decrease the downward momentum percentage that's required for us to sell an equity
+- i.e 5% to 4% 
+6. Decrease the timeframe from which project into the future
+- i.e. we currently project 5 days in the future, we will gradually scale this down until the application is day-trading
+7. Incorporate call options
+8. Incorporate put options
+
 ---
