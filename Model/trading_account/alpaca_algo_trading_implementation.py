@@ -1,7 +1,11 @@
 import asyncio
+import json
 import math
+import os as _os
 import queue
 import random
+import sys
+import urllib.request
 from asyncio import Task
 from collections import deque
 from datetime import datetime, time
@@ -15,9 +19,10 @@ from alpaca.trading.enums import OrderSide, TimeInForce, OrderType
 from alpaca.trading.models import Order
 from alpaca.trading.requests import MarketOrderRequest
 
-# import grpc
-# import grpc.momentum_pb2 as momentum_pb2
-# import grpc.momentum_pb2_grpc as momentum_pb2_grpc
+import grpc as _grpc  # must be imported before sys.path is modified
+sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), '../../grpc')))
+import momentum_pb2
+import momentum_pb2_grpc
 from Model.trading_account.alpaca_trading_portfolio import AlpacaTradingPortfolio
 from Model.utils.constants import Constants
 
@@ -31,8 +36,8 @@ class AlpacaAlgoTradingImplementation:
         self._bar_queue: queue.Queue[dict] = queue.Queue()
         self._bar_history: deque[dict] = deque(maxlen=5000)
 
-        # self._channel = grpc.insecure_channel('localhost:50051')
-        # self._stub = momentum_pb2_grpc.MomentumServiceStub(channel=self._channel)
+        self._channel = _grpc.insecure_channel('localhost:50051')
+        self._stub = momentum_pb2_grpc.MomentumServiceStub(channel=self._channel)
 
         self._close_of_market_time: time = time(16, 0)
         self._current_time_est: time = datetime.now().astimezone(ZoneInfo("America/New_York")).time()
@@ -109,91 +114,39 @@ class AlpacaAlgoTradingImplementation:
         pass
 
     def _get_model_predictions_dict(self) -> dict:
-
+        """
+        Returns { ticker: { "bullish": float, "bearish": float, "balanced": float, "signals": list } }
+        """
         model_predictions_dict: dict = {}
 
-        # TODO: Implement the following logic:
-        #  (1) A given equity will never exceed it's equal weight in reference to other equities in the portfolio
-        #  (2) If the momentum of the equity is down but there are no shares to sell, then no trade is executed
-        #  (3) If the momentum of the equity is up but there is no available cash, then no trade is executed
-        #  (4) Based on the predicted percentage the model outputs for upward momentum of a given equity the MAXIMUM amount (equally weighted) will be purchased
-        #  (5)
+        for ticker in Constants.TICKER_SYMBOL_LIST:
+            outputs = self._fetch_ticker_model_outputs(ticker)
+            if outputs:
+                model_predictions_dict[ticker] = outputs
 
         return model_predictions_dict
 
-    # def _test_method(self) -> None:
-    #
-    #     with self._channel as channel:
-    #
-    #         # Create some dummy stock history (60 days)
-    #         stock_history = []
-    #         base_date = datetime.date(2023, 1, 1)
-    #         for i in range(60):
-    #             d = base_date + datetime.timedelta(days=i)
-    #             stock_history.append(momentum_pb2.OHLCV(
-    #                 date=d.isoformat(),
-    #                 open=150.0 + i,
-    #                 high=155.0 + i,
-    #                 low=148.0 + i,
-    #                 close=152.0 + i,
-    #                 volume=1000000,
-    #                 adj_close=152.0 + i
-    #             ))
-    #
-    #         # Create some dummy market history
-    #         market_history = {}
-    #         for ticker in ["SPY", "QQQ", "DIA", "^VIX"]:
-    #             points = []
-    #             for i in range(60):
-    #                 d = base_date + datetime.timedelta(days=i)
-    #                 points.append(momentum_pb2.OHLCV(
-    #                     date=d.isoformat(),
-    #                     open=400.0 + i,
-    #                     high=405.0 + i,
-    #                     low=398.0 + i,
-    #                     close=402.0 + i,
-    #                     volume=10000000,
-    #                     adj_close=402.0 + i
-    #                 ))
-    #             market_history[ticker] = momentum_pb2.OHLCVList(points=points)
-    #
-    #         request = momentum_pb2.MomentumRequest(
-    #             ticker="AAPL",
-    #             stock_history=stock_history,
-    #             market_history=market_history,
-    #             tweets=["AAPL is looking strong today!", "Bullish on Apple"]
-    #         )
-    #
-    #         print("Sending request to gRPC server...")
-    #         response = self._stub.PredictMomentum(request)
-    #         print(f"Momentum Response: {response.momentum}")
+    def _fetch_ticker_model_outputs(self, ticker: str) -> dict:
+        """
+        Calls GET /api/ticker/momentum?symbol={ticker}&modelType={model} for each of
+        bullish, bearish, and balanced, returning:
+            { "bullish": float, "bearish": float, "balanced": float, "signals": list }
+        """
+        results = {}
+        for model_type in ("bullish", "bearish", "balanced"):
+            url = f"{Constants.BACKEND_BASE_URL}/api/ticker/momentum?symbol={ticker}&modelType={model_type}"
+            try:
+                with urllib.request.urlopen(url, timeout=30) as resp:
+                    data = json.loads(resp.read())
+                results[model_type] = float(data.get("current", 0.0))
+                if model_type == "balanced":
+                    results["signals"] = data.get("signals", [])
+            except Exception as e:
+                print(f"Backend error [{model_type}] for {ticker}: {e}")
+                results[model_type] = 0.0
 
-    # def _get_model_predictions_dict(self) -> dict:
-    #     model_predictions_dict = {}
-    #
-    #     for ticker in Constants.TICKER_SYMBOL_LIST:
-    #         # Construct the request with gathered historical bars and tweets
-    #         request = momentum_pb2.MomentumRequest(
-    #             ticker=ticker,
-    #             stock_history=stock_history,  # List of momentum_pb2.OHLCV
-    #             market_history=market_history,  # Dict of momentum_pb2.OHLCVList
-    #             tweets=tweets  # List of strings
-    #         )
-    #
-    #         response = self._stub.PredictMomentum(request)
-    #
-    #         # Use response.momentum to determine action
-    #         # Example: Buy if momentum > 0.02, Sell if < -0.02
-    #         if response.momentum > 0.02:
-    #             action = OrderSide.BUY
-    #         elif response.momentum < -0.02:
-    #             action = OrderSide.SELL
-    #         else:
-    #             continue
-    #
-    #         model_predictions_dict[ticker] = (quantity, current_price, action)
-    #
-    #     return model_predictions_dict
+        results.setdefault("signals", [])
+        return results
 
     def execute_market_orders(self, trading_client: TradingClient, model_predictions_dict: dict) -> None:
 
