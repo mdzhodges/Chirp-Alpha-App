@@ -3,6 +3,11 @@ variable "environment" {
   default = "local"
 }
 
+variable "logo_dev_api_key" {
+  type    = string
+  default = ""
+}
+
 provider "aws" {
   region = "us-east-1"
 
@@ -34,7 +39,9 @@ module "compute" {
   environment      = var.environment
   vpc_id           = module.networking.vpc_id
   public_subnets   = module.networking.public_subnets
+  private_subnets  = module.networking.private_subnets
   backend_repo_url = module.ecr.backend_repo_url
   frontend_repo_url = module.ecr.frontend_repo_url
   grpc_repo_url    = module.ecr.grpc_repo_url
-}
+  logo_dev_api_key = var.logo_dev_api_key
+  }

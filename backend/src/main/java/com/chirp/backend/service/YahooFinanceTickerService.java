@@ -33,17 +33,18 @@ public class YahooFinanceTickerService {
     private final YahooAuthService authService;
     private final MomentumGrpcClient momentumClient;
     private final StockTwitsService stockTwitsService;
+
+    @Value("${LOGO_DEV_API_KEY:}")
     private String logoDevApiKey;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public YahooFinanceTickerService(ObjectMapper objectMapper, YahooAuthService authService, 
-                                    MomentumGrpcClient momentumClient, StockTwitsService stockTwitsService,
-                                    @Value("${LOGO_DEV_API_KEY}") String logoDevApiKey) {
+                                    MomentumGrpcClient momentumClient, StockTwitsService stockTwitsService) {
         this.httpClient = authService.getHttpClient();
         this.objectMapper = objectMapper;
         this.authService = authService;
         this.momentumClient = momentumClient;
         this.stockTwitsService = stockTwitsService;
-        this.logoDevApiKey = logoDevApiKey;
     }
 
     public TickerResponse fetch(String symbol, String modelType, boolean skipMomentum) {

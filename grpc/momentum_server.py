@@ -167,6 +167,12 @@ def _load_sentiment_classifier(model_name: str, device: torch.device):
 
     model.eval().to(device)
 
+
+    # need to qunatize this model to make it more efficeient of the grpc server when deployed
+    # perhaps also switch to torch.serve instead of loading the model into memory, could reduce memory footprint
+    # we HAVE to use a redis cache for commonly fetch tickers, would help alot for speed
+    # some other things we could do for quick fetch is just absoulutely BEEF up the ec2 instace, could also experiement with using different ec2 grpcs for each model, would be a messy af set up
+    # could also do concurrent models, that would require alot more cpu power tho
     cfg = getattr(model.config, "id2label", None) or {}
     label_map: dict[int, str] = {}
     for idx, name in cfg.items():

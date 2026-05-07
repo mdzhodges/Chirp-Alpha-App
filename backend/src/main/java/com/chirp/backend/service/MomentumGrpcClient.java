@@ -9,9 +9,10 @@ import momentum.MomentumResponse;
 import momentum.MomentumServiceGrpc;
 import momentum.OHLCV;
 import momentum.OHLCVList;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import javax.annotation.PreDestroy;
+import jakarta.annotation.PreDestroy;
 import java.util.List;
 import java.util.Map;
 
@@ -21,8 +22,10 @@ public class MomentumGrpcClient {
     private final ManagedChannel channel;
     private final MomentumServiceGrpc.MomentumServiceBlockingStub blockingStub;
 
-    public MomentumGrpcClient() {
-        this.channel = ManagedChannelBuilder.forAddress("localhost", 50051)
+    @org.springframework.beans.factory.annotation.Autowired
+    public MomentumGrpcClient(@Value("${grpc.server.host:localhost}") String host,
+                              @Value("${grpc.server.port:50051}") int port) {
+        this.channel = ManagedChannelBuilder.forAddress(host, port)
                 .usePlaintext()
                 .build();
         this.blockingStub = MomentumServiceGrpc.newBlockingStub(channel);
