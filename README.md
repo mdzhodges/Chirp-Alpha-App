@@ -142,14 +142,14 @@ To integrate the gRPC momentum prediction service with the trading logic in `Mod
 Setup a persistent channel and stub within the `AlpacaAlgoTradingImplementation` class:
 ```python
 import grpc
-import momentum_pb2
-import momentum_pb2_grpc
+import grpc.momentum_pb2
+import grpc.momentum_pb2_grpc as momentum_pb2_grpc
 
 class AlpacaAlgoTradingImplementation:
     def __init__(self, ...):
         # ... existing init ...
-        self.channel = grpc.insecure_channel('localhost:50051')
-        self.stub = momentum_pb2_grpc.MomentumServiceStub(self.channel)
+        self._channel = grpc.insecure_channel('localhost:50051')
+        self._stub = momentum_pb2_grpc.MomentumServiceStub(self.channel)
 ```
 
 #### **2. Implement Data Gathering for Inference**

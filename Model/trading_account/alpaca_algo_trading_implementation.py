@@ -15,6 +15,9 @@ from alpaca.trading.enums import OrderSide, TimeInForce, OrderType
 from alpaca.trading.models import Order
 from alpaca.trading.requests import MarketOrderRequest
 
+# import grpc
+# import grpc.momentum_pb2 as momentum_pb2
+# import grpc.momentum_pb2_grpc as momentum_pb2_grpc
 from Model.trading_account.alpaca_trading_portfolio import AlpacaTradingPortfolio
 from Model.utils.constants import Constants
 
@@ -27,6 +30,10 @@ class AlpacaAlgoTradingImplementation:
 
         self._bar_queue: queue.Queue[dict] = queue.Queue()
         self._bar_history: deque[dict] = deque(maxlen=5000)
+
+        # self._channel = grpc.insecure_channel('localhost:50051')
+        # self._stub = momentum_pb2_grpc.MomentumServiceStub(channel=self._channel)
+
         self._close_of_market_time: time = time(16, 0)
         self._current_time_est: time = datetime.now().astimezone(ZoneInfo("America/New_York")).time()
 
@@ -54,6 +61,7 @@ class AlpacaAlgoTradingImplementation:
             trading_client: TradingClient = TradingClient(api_key=alpaca_api_key,
                                                           secret_key=alpaca_api_key_secret,
                                                           paper=True)
+
             alpaca_trading_portfolio: AlpacaTradingPortfolio = AlpacaTradingPortfolio(trading_client=trading_client)
 
             data_stream: StockDataStream = StockDataStream(api_key=alpaca_api_key,
@@ -63,8 +71,6 @@ class AlpacaAlgoTradingImplementation:
 
                 data_stream.subscribe_bars(self._handle_bar, *Constants.TICKER_SYMBOL_LIST)
                 stream_task: Task = asyncio.create_task(asyncio.to_thread(data_stream.run))
-
-                current_time_step: int = 1
 
                 if self._current_time_est < self._close_of_market_time:
                     account_dict: dict[str, Any] = alpaca_trading_portfolio.get_account_dict()
@@ -79,12 +85,14 @@ class AlpacaAlgoTradingImplementation:
                     current_datetime: datetime = datetime.now().astimezone(ZoneInfo("America/New_York"))
 
                     print(
-                        f"Timestep: {current_time_step} -> Timestamp: {current_datetime.time()} -> Portfolio Equity: {portfolio_equity:,.2f} -> Portfolio Cash Available: ${portfolio_cash:,.2f}")
+                        f"Timestamp: {current_datetime.time()} -> Portfolio Equity: {portfolio_equity:,.2f} -> Portfolio Cash Available: ${portfolio_cash:,.2f}")
+                    print(f"state_data_dict = {state_data_dict}")
                     print("=" * 150)
 
                     model_predictions_dict: dict = self._get_model_predictions_dict()
 
-                    self.execute_market_orders(model_predictions_dict=model_predictions_dict)
+                    # self.execute_market_orders(trading_client=trading_client,
+                    #                            model_predictions_dict=model_predictions_dict)
 
                 await stream_task
 
@@ -112,6 +120,80 @@ class AlpacaAlgoTradingImplementation:
         #  (5)
 
         return model_predictions_dict
+
+    # def _test_method(self) -> None:
+    #
+    #     with self._channel as channel:
+    #
+    #         # Create some dummy stock history (60 days)
+    #         stock_history = []
+    #         base_date = datetime.date(2023, 1, 1)
+    #         for i in range(60):
+    #             d = base_date + datetime.timedelta(days=i)
+    #             stock_history.append(momentum_pb2.OHLCV(
+    #                 date=d.isoformat(),
+    #                 open=150.0 + i,
+    #                 high=155.0 + i,
+    #                 low=148.0 + i,
+    #                 close=152.0 + i,
+    #                 volume=1000000,
+    #                 adj_close=152.0 + i
+    #             ))
+    #
+    #         # Create some dummy market history
+    #         market_history = {}
+    #         for ticker in ["SPY", "QQQ", "DIA", "^VIX"]:
+    #             points = []
+    #             for i in range(60):
+    #                 d = base_date + datetime.timedelta(days=i)
+    #                 points.append(momentum_pb2.OHLCV(
+    #                     date=d.isoformat(),
+    #                     open=400.0 + i,
+    #                     high=405.0 + i,
+    #                     low=398.0 + i,
+    #                     close=402.0 + i,
+    #                     volume=10000000,
+    #                     adj_close=402.0 + i
+    #                 ))
+    #             market_history[ticker] = momentum_pb2.OHLCVList(points=points)
+    #
+    #         request = momentum_pb2.MomentumRequest(
+    #             ticker="AAPL",
+    #             stock_history=stock_history,
+    #             market_history=market_history,
+    #             tweets=["AAPL is looking strong today!", "Bullish on Apple"]
+    #         )
+    #
+    #         print("Sending request to gRPC server...")
+    #         response = self._stub.PredictMomentum(request)
+    #         print(f"Momentum Response: {response.momentum}")
+
+    # def _get_model_predictions_dict(self) -> dict:
+    #     model_predictions_dict = {}
+    #
+    #     for ticker in Constants.TICKER_SYMBOL_LIST:
+    #         # Construct the request with gathered historical bars and tweets
+    #         request = momentum_pb2.MomentumRequest(
+    #             ticker=ticker,
+    #             stock_history=stock_history,  # List of momentum_pb2.OHLCV
+    #             market_history=market_history,  # Dict of momentum_pb2.OHLCVList
+    #             tweets=tweets  # List of strings
+    #         )
+    #
+    #         response = self._stub.PredictMomentum(request)
+    #
+    #         # Use response.momentum to determine action
+    #         # Example: Buy if momentum > 0.02, Sell if < -0.02
+    #         if response.momentum > 0.02:
+    #             action = OrderSide.BUY
+    #         elif response.momentum < -0.02:
+    #             action = OrderSide.SELL
+    #         else:
+    #             continue
+    #
+    #         model_predictions_dict[ticker] = (quantity, current_price, action)
+    #
+    #     return model_predictions_dict
 
     def execute_market_orders(self, trading_client: TradingClient, model_predictions_dict: dict) -> None:
 
