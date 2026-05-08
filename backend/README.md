@@ -6,6 +6,8 @@
 ## Run
 - `./mvnw spring-boot:run`
 - Backend runs on `http://localhost:8080`
+- Redis cache expects `localhost:6379` by default
+- For local dev, run `./run_app.sh` from the repo root so Redis starts automatically
 
 ## API
 - `GET /api/health`

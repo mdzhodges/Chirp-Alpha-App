@@ -13,6 +13,7 @@
 ## Table of Contents
 
 - [Introduction](#introduction)
+- [Local Setup](#local-setup)
 - [Sentiment Encoder Tower](#sentiment-encoder-tower)
 - [Stock Neural Network Tower](#stock-neural-network-tower)
 - [Market Index Neural Network Tower](#market-index-neural-network-tower)
@@ -29,6 +30,17 @@
 This project created a multimodal machine learning architecture to predict momentum in financial markets. 
 This was done by leveraging a pre-trained sentiment analysis encoder in FinTwit (financial X/Twitter) as well as a custom deep neural network architecture that ingested stock and index data aligned with the time frame of the tweets. 
 Predicting momentum will allow retail traders to make more informed decisions before investing, as well as potentially forecasting the future trajectory of a stock.gi
+
+---
+
+## **Local Setup**
+
+The local startup script now launches a Redis container automatically when Docker is available.
+
+- `./run_app.sh` starts Redis, the Python gRPC service, the Spring backend, and the frontend.
+- Redis runs on `localhost:6379` by default.
+- Set `START_REDIS=false` if you want to skip Redis startup.
+- Set `REDIS_CONTAINER_NAME` or `REDIS_IMAGE` if you want to customize the container.
 
 ---
 
