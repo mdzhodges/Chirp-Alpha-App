@@ -2,17 +2,16 @@ from alpaca.trading.enums import OrderSide
 
 
 class Constants:
-
-    BULLISH_STR:str = "BULLISH"
-    BALANCED_STR:str = "BALANCED"
-    BEARISH_STR:str = "BEARISH"
-    ALPACA_BULLISH_API_KEY:str = "ALPACA_BULLISH_API_KEY"
+    BULLISH_STR: str = "bullish"
+    BALANCED_STR: str = "balanced"
+    BEARISH_STR: str = "bearish"
+    ALPACA_BULLISH_API_KEY: str = "ALPACA_BULLISH_API_KEY"
     ALPACA_BULLISH_API_KEY_SECRET: str = "ALPACA_BULLISH_API_KEY_SECRET"
 
-    ALPACA_BALANCED_API_KEY:str = "ALPACA_BALANCED_API_KEY"
+    ALPACA_BALANCED_API_KEY: str = "ALPACA_BALANCED_API_KEY"
     ALPACA_BALANCED_API_KEY_SECRET: str = "ALPACA_BALANCED_API_KEY_SECRET"
 
-    ALPACA_BEARISH_API_KEY:str = "ALPACA_BEARISH_API_KEY"
+    ALPACA_BEARISH_API_KEY: str = "ALPACA_BEARISH_API_KEY"
     ALPACA_BEARISH_API_KEY_SECRET: str = "ALPACA_BEARISH_API_KEY_SECRET"
 
     BACKEND_BASE_URL = "http://localhost:8080"
@@ -28,4 +27,14 @@ class Constants:
         "change_today"
     ]
 
-    TICKER_SYMBOL_LIST: list[str] = ["BLK", "AAPL", "WMT", "NVDA", "KO", "CRWV", "QQQ", "SPY", "JPM", "GS"]
+    TARGET_CASH_PERCENT: float = 0.50
+    TARGET_EQUITY_PERCENT: float = 0.50
+
+    PORTFOLIO_INITIALIZATION_TOLERANCE_PERCENT: float = 0.05
+
+    TICKER_SYMBOL_BROAD_MARKET_INDEXES: list[str] = ["DIA", "QQQ", "SPY", "^VIX"]
+
+    DATA_INGESTION_TICKER_SYMBOL_LIST: list[str] = ["DIA", "QQQ", "SPY", "^VIX", "BLK", "AAPL", "WMT", "NVDA", "KO",
+                                                    "CRWV", "QQQ", "SPY", "JPM", "GS"]
+
+    PORTFOLIO_TICKER_SYMBOL_LIST: list[str] = ["BLK", "AAPL", "WMT", "NVDA", "KO", "CRWV", "QQQ", "SPY", "JPM", "GS"]
