@@ -74,7 +74,7 @@ class AlpacaTradingPortfolio:
     def _populate_missing_ticker_entries(self, all_positions_list: list[Position], account_dict: dict[str, float],
                                          positions_dict: dict[str, dict[str, float]]) -> None:
 
-        full_ticker_symbol_list: list[str] = Constants.TICKER_SYMBOL_LIST
+        full_ticker_symbol_list: list[str] = Constants.DATA_INGESTION_TICKER_SYMBOL_LIST
         positions_str_list: list[str] = self._get_positions_str_list(all_positions_list=all_positions_list)
 
         for ticker_symbol_str in full_ticker_symbol_list:
