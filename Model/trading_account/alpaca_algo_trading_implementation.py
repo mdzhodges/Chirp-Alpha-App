@@ -1,20 +1,15 @@
-import asyncio
 import importlib
 import json
-import math
 import os as _os
 import queue
-import random
 import sys
 import urllib.parse
 import urllib.request
-from asyncio import Task
 from collections import deque
 from datetime import datetime, time
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from alpaca.data.live import StockDataStream
 from alpaca.trading import Position, MarketOrderRequest, Order
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
@@ -95,11 +90,6 @@ class AlpacaAlgoTradingImplementation:
 
     async def execute_trading_algorithm(self) -> None:
 
-        model_predictions_dict: dict = self._get_model_predictions_dict()
-
-        for key, value in model_predictions_dict.items():
-            print(f"key = {key} -> value = {value}")
-
         for algorithmic_strategy_str, api_key_tuple in self._algorithmic_trading_credentials_dict.items():
             alpaca_api_key: str = api_key_tuple[0]
             alpaca_api_key_secret: str = api_key_tuple[1]
@@ -108,61 +98,49 @@ class AlpacaAlgoTradingImplementation:
             print(f"Executing Trading Algorithm: {algorithmic_strategy_str.upper()}")
             print("=" * 100)
 
-            alpaca_api_key = alpaca_api_key
-            alpaca_api_key_secret = alpaca_api_key_secret
+            trading_client: TradingClient = TradingClient(
+                api_key=alpaca_api_key,
+                secret_key=alpaca_api_key_secret,
+                paper=True,
+            )
 
-            trading_client: TradingClient = TradingClient(api_key=alpaca_api_key,
-                                                          secret_key=alpaca_api_key_secret,
-                                                          paper=True)
-
-            alpaca_trading_portfolio: AlpacaTradingPortfolio = AlpacaTradingPortfolio(trading_client=trading_client)
-
-            data_stream: StockDataStream = StockDataStream(api_key=alpaca_api_key,
-                                                           secret_key=alpaca_api_key_secret)
+            alpaca_trading_portfolio: AlpacaTradingPortfolio = AlpacaTradingPortfolio(
+                trading_client=trading_client
+            )
 
             try:
+                account_dict: dict[str, Any] = alpaca_trading_portfolio.get_account_dict()
+                all_positions_list: list[Position] = trading_client.get_all_positions()
 
-                data_stream.subscribe_bars(self._handle_bar, *Constants.PORTFOLIO_TICKER_SYMBOL_LIST)
-                stream_task: Task = asyncio.create_task(asyncio.to_thread(data_stream.run))
+                # self._initialize_portfolio_holdings(trading_client=trading_client, account_dict=account_dict)
 
-                if self._current_time_est < self._close_of_market_time:
-                    account_dict: dict[str, Any] = alpaca_trading_portfolio.get_account_dict()
-                    all_positions_list: list[Position] = trading_client.get_all_positions()
+                model_predictions_dict: dict = self._get_model_predictions_dict()
 
-                    self._initialize_portfolio_holdings(trading_client=trading_client,
-                                                        account_dict=account_dict,
-                                                        all_positions_list=all_positions_list)
+                self._execute_daily_momentum_policy(
+                    trading_client=trading_client,
+                    model_predictions_dict=model_predictions_dict,
+                    algorithmic_strategy_str=algorithmic_strategy_str,
+                    account_dict=account_dict,
+                    all_positions_list=all_positions_list,
+                )
 
-                    all_positions_list = trading_client.get_all_positions()
+                current_datetime: datetime = datetime.now().astimezone(
+                    ZoneInfo("America/New_York")
+                )
 
-                    state_data_dict: dict = await asyncio.to_thread(self._bar_queue.get)
+                portfolio_cash: float = account_dict.get("cash", 0.0)
+                portfolio_equity: float = account_dict.get("equity", 0.0)
 
-                    portfolio_cash: float = account_dict.get("cash", 0.0)
-                    portfolio_equity: float = account_dict.get("equity", 0.0)
-                    current_datetime: datetime = datetime.now().astimezone(ZoneInfo("America/New_York"))
-
-                    print(
-                        f"Timestamp: {current_datetime.time()} -> Portfolio Equity: {portfolio_equity:,.2f} -> Portfolio Cash Available: ${portfolio_cash:,.2f}")
-                    print("=" * 150)
-
-                    quantity_by_ticker_dict: dict[
-                        str, tuple[int, float, OrderSide]] = self._get_quantity_by_ticker_dict(
-                        account_dict=account_dict, all_positions_list=all_positions_list)
-
-                    for key, value in quantity_by_ticker_dict.items():
-                        print(f"key = {key} -> value = {value}")
-
-                    # TODO: Stopped here, keep implementing
-
-                    exit()
-                    # self.execute_market_orders(trading_client=trading_client,
-                    #                            model_predictions_dict=model_predictions_dict,
-                    #                            algorithmic_strategy_str=algorithmic_strategy_str)
-
-                await stream_task
+                print(
+                    f"Timestamp: {current_datetime.time()} -> "
+                    f"Portfolio Equity: {portfolio_equity:,.2f} -> "
+                    f"Portfolio Cash Available: ${portfolio_cash:,.2f}"
+                )
+                print("=" * 150)
 
             except Exception as e:
                 print(f"Exception Thrown: {e}")
+
 
     def _get_model_predictions_dict(self) -> dict[str, float]:
         """
@@ -238,136 +216,7 @@ class AlpacaAlgoTradingImplementation:
 
         return model_predictions_dict
 
-    def _get_quantity_by_ticker_dict(self, account_dict: dict[str, Any], all_positions_list: list, ) -> \
-            dict[
-                str, tuple[int, float, OrderSide]]:
-
-        current_cash_t: float = float(account_dict.get("cash", 0.0))
-        random_quantity_dict: dict[str, tuple[int, float, OrderSide]] = {}
-
-        for stock_position in all_positions_list:
-            order_side: OrderSide = random.choice(Constants.ORDER_SIDE_ACTIONS_LIST)
-            is_buy_side: bool = order_side == OrderSide.BUY
-            is_sell_side: bool = order_side == OrderSide.SELL
-
-            if is_sell_side:
-                self._is_sell_side_order(order_side=order_side, random_quantity_dict=random_quantity_dict,
-                                         stock_position=stock_position)
-            elif is_buy_side:
-                self._is_buy_side_order(order_side=order_side, random_quantity_dict=random_quantity_dict,
-                                        stock_position=stock_position, current_cash_t=current_cash_t)
-
-        return random_quantity_dict
-
-    def _is_sell_side_order(self, order_side: OrderSide,
-                            random_quantity_dict: dict[str, tuple[int, float, OrderSide]],
-                            stock_position: Position) -> None:
-
-        ticker_symbol_str: str = stock_position.symbol
-        stock_quantity: int = int(stock_position.qty_available)
-        stock_price: float = float(stock_position.current_price)
-
-        max_valid_quantity: int = stock_quantity
-
-        if max_valid_quantity <= 0:
-            random_quantity_dict[ticker_symbol_str] = (0, stock_price, order_side)
-            return
-
-        random_quantity: int = math.ceil(random.randint(1, max_valid_quantity) / 2)
-        random_quantity_dict[ticker_symbol_str] = (random_quantity, stock_price, order_side)
-        return
-
-    def _is_buy_side_order(self, order_side: OrderSide,
-                           random_quantity_dict: dict[str, tuple[int, float, OrderSide]],
-                           stock_position: Position, current_cash_t: float) -> None:
-
-        ticker_symbol_str: str = stock_position.symbol
-        stock_price: float = float(stock_position.current_price)
-
-        max_valid_quantity = int(current_cash_t // stock_price)
-
-        if self._is_max_quantity_less_or_equal_to_zero(order_side=order_side,
-                                                       random_quantity_dict=random_quantity_dict,
-                                                       stock_position=stock_position,
-                                                       current_cash_t=current_cash_t,
-                                                       max_valid_quantity=max_valid_quantity):
-            return
-
-        random_quantity = math.ceil(random.randint(1, max_valid_quantity) / 2)
-
-        if self._is_transaction_cost_greater_than_cash_available(order_side=order_side,
-                                                                 random_quantity_dict=random_quantity_dict,
-                                                                 stock_position=stock_position,
-                                                                 current_cash_t=current_cash_t,
-                                                                 random_quantity=random_quantity):
-            return
-
-        random_quantity_dict[ticker_symbol_str] = (random_quantity, stock_price, order_side)
-
-    def _is_transaction_cost_greater_than_cash_available(self, order_side: OrderSide, random_quantity_dict: dict[
-        str, tuple[int, float, OrderSide]], stock_position: Position, current_cash_t: float,
-                                                         random_quantity: int) -> bool:
-
-        ticker_symbol_str: str = stock_position.symbol
-        stock_price: float = float(stock_position.current_price)
-
-        transaction_cost: float = stock_price * random_quantity
-        if transaction_cost > current_cash_t:
-            random_quantity_dict[ticker_symbol_str] = (0, stock_price, order_side)
-            print(
-                f"Invalid {order_side.name} of {random_quantity:,} share(s) of {ticker_symbol_str}:"
-            )
-            print(
-                f"Quantity -> {random_quantity}, Transaction Cost ->${transaction_cost:,.2f} exceeds Cash On Hand ->${current_cash_t:,.2f}")
-            return True
-
-        return False
-
-    def _is_max_quantity_less_or_equal_to_zero(self, order_side: OrderSide, random_quantity_dict: dict[
-        str, tuple[int, float, OrderSide]], stock_position: Position, current_cash_t: float,
-                                               max_valid_quantity: int) -> bool:
-
-        ticker_symbol_str: str = stock_position.symbol
-        stock_quantity: int = int(stock_position.qty_available)
-        stock_price: float = float(stock_position.current_price)
-
-        if max_valid_quantity <= 0:
-            random_quantity_dict[ticker_symbol_str] = (0, stock_price, order_side)
-            transaction_cost: float = stock_price * max_valid_quantity
-            print(
-                f"Invalid {order_side.name} of {stock_quantity:,} share(s) of {ticker_symbol_str}:"
-            )
-            print(
-                f"Cash On Hand -> ${current_cash_t:,.2f}, Current Stock Price -> ${stock_price:,.2f}, Transaction Cost -> ${transaction_cost:,.2f}")
-            return True
-
-        return False
-
-    def _get_stock_quantity(self, dollars_to_invest: float, stock_price: float) -> float:
-        """
-        Returns the number of shares to buy for one ticker.
-
-        Example:
-            dollars_to_invest = 5000
-            stock_price = 250
-
-            quantity = 20 shares
-        """
-
-        if dollars_to_invest <= 0:
-            return 0.0
-
-        if stock_price <= 0:
-            return 0.0
-
-        return dollars_to_invest / stock_price
-
-    def _initialize_portfolio_holdings(
-            self,
-            trading_client: TradingClient,
-            account_dict: dict[str, Any],
-            all_positions_list: list[Position],
-    ) -> None:
+    def _initialize_portfolio_holdings(self, trading_client: TradingClient, account_dict: dict[str, Any]) -> None:
         """
         Initializes the portfolio only if it has not already been initialized.
 
@@ -384,14 +233,6 @@ class AlpacaAlgoTradingImplementation:
 
         if not portfolio_tickers:
             print("No portfolio tickers configured. Skipping portfolio initialization.")
-            return
-
-        if self._is_portfolio_already_initialized(
-                account_dict=account_dict,
-                all_positions_list=all_positions_list,
-                portfolio_tickers=portfolio_tickers,
-        ):
-            print("Portfolio already appears initialized. Skipping initial buys.")
             return
 
         portfolio_value: float = float(
@@ -411,7 +252,6 @@ class AlpacaAlgoTradingImplementation:
             return
 
         target_cash_amount: float = portfolio_value * Constants.TARGET_CASH_PERCENT
-        target_equity_amount: float = portfolio_value * Constants.TARGET_EQUITY_PERCENT
 
         cash_to_invest: float = cash_available - target_cash_amount
 
@@ -424,8 +264,7 @@ class AlpacaAlgoTradingImplementation:
 
         dollars_per_ticker: float = cash_to_invest / len(portfolio_tickers)
 
-        print("=" * 100)
-        print("Initializing Portfolio Holdings")
+        print("Initializing Portfolio Holdings:")
         print(f"Portfolio Value: ${portfolio_value:,.2f}")
         print(f"Cash Available: ${cash_available:,.2f}")
         print(f"Target Cash: ${target_cash_amount:,.2f}")
@@ -459,148 +298,260 @@ class AlpacaAlgoTradingImplementation:
         print("Portfolio initialization orders submitted.")
         print("=" * 100)
 
-    def _is_portfolio_already_initialized(
-            self,
-            account_dict: dict[str, Any],
-            all_positions_list: list[Position],
-            portfolio_tickers: list[str],
-    ) -> bool:
+    def _execute_daily_momentum_policy(self, trading_client: TradingClient, model_predictions_dict: dict,
+                                       algorithmic_strategy_str: str, account_dict: dict[str, Any],
+                                       all_positions_list: list[Position]) -> None:
         """
-        Returns True if the live portfolio already looks like the intended
-        initialized portfolio.
+        Applies the daily momentum policy.
 
-        Checks:
-            1. Cash is approximately 50% of portfolio value.
-            2. Every target ticker has an open position.
-            3. No target position has a zero or negative market value.
+        Buy:
+            if momentum > 0.05
+
+        Sell:
+            if momentum < -0.05
+
+        Trade size:
+            0.5% of total portfolio value
+
+        Position bounds:
+            minimum 2.5%
+            maximum 10%
         """
 
-        portfolio_value: float = float(
-            account_dict.get("portfolio_value")
-            or account_dict.get("equity")
-            or 0.0
-        )
+        print(f"Executing Daily Momentum Policy for: {algorithmic_strategy_str.upper()}")
+        print("=" * 100)
 
-        cash: float = float(account_dict.get("cash", 0.0))
+        portfolio_tickers: list[str] = Constants.PORTFOLIO_TICKER_SYMBOL_LIST
+
+        portfolio_value: float = float(account_dict.get("portfolio_value") or account_dict.get("equity") or 0.0)
+
+        cash_available: float = float(account_dict.get("cash", 0.0))
 
         if portfolio_value <= 0:
-            return False
+            print("Invalid portfolio value. Skipping daily momentum policy.")
+            return
 
-        current_cash_percent: float = cash / portfolio_value
-        target_cash_percent: float = Constants.TARGET_CASH_PERCENT
-        tolerance_percent: float = Constants.PORTFOLIO_INITIALIZATION_TOLERANCE_PERCENT
-
-        lower_cash_bound: float = target_cash_percent - tolerance_percent
-        upper_cash_bound: float = target_cash_percent + tolerance_percent
-
-        is_cash_balanced: bool = (
-                lower_cash_bound <= current_cash_percent <= upper_cash_bound
-        )
+        trade_notional: float = portfolio_value * Constants.DAILY_TRADE_WEIGHT
 
         position_by_symbol_dict: dict[str, Position] = {
             position.symbol: position
             for position in all_positions_list
         }
 
-        missing_tickers: list[str] = [
-            ticker
-            for ticker in portfolio_tickers
-            if ticker not in position_by_symbol_dict
-        ]
+        print("=" * 100)
+        print("Executing Daily Momentum Policy")
+        print(f"Portfolio Value: ${portfolio_value:,.2f}")
+        print(f"Cash Available: ${cash_available:,.2f}")
+        print(f"Trade Size: ${trade_notional:,.2f}")
+        print("=" * 100)
 
-        if missing_tickers:
-            print(f"Portfolio is not initialized. Missing positions: {missing_tickers}")
-            return False
+        for ticker_symbol_str in portfolio_tickers:
+            model_output_dict: dict = model_predictions_dict.get(ticker_symbol_str, {})
 
-        for ticker in portfolio_tickers:
-            position: Position = position_by_symbol_dict[ticker]
+            if not model_output_dict:
+                print(f"Skipping {ticker_symbol_str}: no model output found.")
+                continue
 
-            market_value: float = float(getattr(position, "market_value", 0.0) or 0.0)
-            quantity: float = float(getattr(position, "qty", 0.0) or 0.0)
-
-            if market_value <= 0 or quantity <= 0:
-                print(
-                    f"Portfolio is not initialized. Invalid position for {ticker}: "
-                    f"qty={quantity}, market_value={market_value}"
-                )
-                return False
-
-        if not is_cash_balanced:
-            print(
-                "Portfolio has all target holdings, but cash is not near target. "
-                f"Current cash percent: {current_cash_percent:.2%}, "
-                f"target: {target_cash_percent:.2%}"
+            momentum_value: float = self._get_strategy_momentum_value(
+                model_output_dict=model_output_dict,
+                algorithmic_strategy_str=algorithmic_strategy_str,
             )
-            return False
 
-        return True
+            position: Position | None = position_by_symbol_dict.get(ticker_symbol_str)
 
-    def _get_latest_stock_price(self, ticker: str) -> float:
-        """
-        Gets the latest stock price from the Java backend.
-        """
+            if position is None:
+                print(f"Skipping {ticker_symbol_str}: no current position found.")
+                continue
 
-        url: str = self._build_backend_url(
-            path="/api/ticker",
-            query_params={
-                "symbol": ticker,
-                "modelType": "balanced",
-                "skipMomentum": "true",
-            },
-        )
+            current_market_value: float = float(
+                getattr(position, "market_value", 0.0) or 0.0
+            )
 
-        ticker_json: dict = self._get_json_from_backend(url=url)
+            current_quantity: float = float(
+                getattr(position, "qty", 0.0) or 0.0
+            )
 
-        stock_price: float = float(
-            ticker_json.get("price")
-            or ticker_json.get("regularMarketPrice")
-            or ticker_json.get("currentPrice")
-            or 0.0
-        )
+            current_price: float = float(
+                getattr(position, "current_price", 0.0) or 0.0
+            )
 
-        return stock_price
+            current_weight: float = current_market_value / portfolio_value
 
-    def execute_market_orders(self, trading_client: TradingClient, model_predictions_dict: dict,
-                              algorithmic_strategy_str: str) -> None:
-
-        try:
-
-            for ticker_symbol_str, model_output_dict in model_predictions_dict.items():
-
-                #
-                # if algorithmic_strategy_str.lower() == model_output_dict.get(algorithmic_strategy_str_lower_case):
-                #     momentum_value: float = model_output_dict.get(algorithmic_strategy_str_lower_case)
-
-                # TODO: Change all these values 3 values
-                stock_quantity: float = 0.0
-                stock_action: OrderSide = OrderSide.BUY
-                stock_price: float = 0.0
-
-                if stock_quantity <= 0 and stock_action == OrderSide.SELL:
-                    print(f"Stock Quantity: {stock_quantity} and Action: {stock_action}")
-                    continue
-
-                market_order_request: MarketOrderRequest = MarketOrderRequest(
-                    symbol=ticker_symbol_str,
-                    qty=stock_quantity,
-                    side=stock_action,
-                    order_type=OrderType.MARKET,
-                    time_in_force=TimeInForce.DAY
+            if momentum_value > Constants.MOMENTUM_BUY_THRESHOLD:
+                self._try_submit_momentum_buy_order(
+                    trading_client=trading_client,
+                    ticker_symbol_str=ticker_symbol_str,
+                    momentum_value=momentum_value,
+                    current_weight=current_weight,
+                    current_market_value=current_market_value,
+                    portfolio_value=portfolio_value,
+                    trade_notional=trade_notional,
+                    cash_available=cash_available,
                 )
 
-                market_order: Order = trading_client.submit_order(
-                    order_data=market_order_request
+            elif momentum_value < Constants.MOMENTUM_SELL_THRESHOLD:
+                self._try_submit_momentum_sell_order(
+                    trading_client=trading_client,
+                    ticker_symbol_str=ticker_symbol_str,
+                    momentum_value=momentum_value,
+                    current_weight=current_weight,
+                    current_market_value=current_market_value,
+                    current_quantity=current_quantity,
+                    current_price=current_price,
+                    portfolio_value=portfolio_value,
+                    trade_notional=trade_notional,
                 )
 
-                market_order_qty_int: int = int(market_order.qty)
-
+            else:
                 print(
-                    f"Successfully {market_order.side.name} {market_order_qty_int} share(s) of {market_order.symbol} @ ${stock_price:,.2f} for ${stock_price * market_order_qty_int:,.2f}")
+                    f"HOLD {ticker_symbol_str}: momentum={momentum_value:.4f}, "
+                    f"weight={current_weight:.2%}"
+                )
 
-            print("=" * 100)
+        print("=" * 100)
 
-        except Exception as e:
-            print(f"Exception Thrown: {e}")
+    def _try_submit_momentum_buy_order(
+            self,
+            trading_client: TradingClient,
+            ticker_symbol_str: str,
+            momentum_value: float,
+            current_weight: float,
+            current_market_value: float,
+            portfolio_value: float,
+            trade_notional: float,
+            cash_available: float,
+    ) -> None:
+        """
+        Buys 0.5% of portfolio value if doing so will not exceed the 10% max.
+        """
+
+        max_market_value: float = (
+                portfolio_value * Constants.MAX_EQUITY_WEIGHT_PER_SYMBOL
+        )
+
+        available_room_to_buy: float = max_market_value - current_market_value
+
+        if available_room_to_buy <= 0:
+            print(
+                f"BUY BLOCKED {ticker_symbol_str}: already at or above max weight. "
+                f"momentum={momentum_value:.4f}, weight={current_weight:.2%}"
+            )
+            return
+
+        buy_notional: float = min(
+            trade_notional,
+            available_room_to_buy,
+            cash_available,
+        )
+
+        if buy_notional <= 0:
+            print(
+                f"BUY BLOCKED {ticker_symbol_str}: no cash or room available. "
+                f"momentum={momentum_value:.4f}"
+            )
+            return
+
+        market_order_request: MarketOrderRequest = MarketOrderRequest(
+            symbol=ticker_symbol_str,
+            notional=buy_notional,
+            side=OrderSide.BUY,
+            order_type=OrderType.MARKET,
+            time_in_force=TimeInForce.DAY,
+        )
+
+        trading_client.submit_order(order_data=market_order_request)
+
+        print(
+            f"BUY {ticker_symbol_str}: ${buy_notional:,.2f}, "
+            f"momentum={momentum_value:.4f}, current_weight={current_weight:.2%}"
+        )
+
+    def _try_submit_momentum_sell_order(
+            self,
+            trading_client: TradingClient,
+            ticker_symbol_str: str,
+            momentum_value: float,
+            current_weight: float,
+            current_market_value: float,
+            current_quantity: float,
+            current_price: float,
+            portfolio_value: float,
+            trade_notional: float,
+    ) -> None:
+        """
+        Sells 0.5% of portfolio value if doing so will not fall below the 2.5% min.
+        """
+
+        if current_quantity <= 0:
+            print(f"SELL BLOCKED {ticker_symbol_str}: no shares owned.")
+            return
+
+        if current_price <= 0:
+            print(f"SELL BLOCKED {ticker_symbol_str}: invalid current price.")
+            return
+
+        min_market_value: float = (
+                portfolio_value * Constants.MIN_EQUITY_WEIGHT_PER_SYMBOL
+        )
+
+        available_room_to_sell: float = current_market_value - min_market_value
+
+        if available_room_to_sell <= 0:
+            print(
+                f"SELL BLOCKED {ticker_symbol_str}: already at or below min weight. "
+                f"momentum={momentum_value:.4f}, weight={current_weight:.2%}"
+            )
+            return
+
+        sell_notional: float = min(
+            trade_notional,
+            available_room_to_sell,
+            current_market_value,
+        )
+
+        quantity_to_sell: float = sell_notional / current_price
+
+        if quantity_to_sell <= 0:
+            print(f"SELL BLOCKED {ticker_symbol_str}: calculated sell quantity is 0.")
+            return
+
+        if quantity_to_sell > current_quantity:
+            quantity_to_sell = current_quantity
+
+        market_order_request: MarketOrderRequest = MarketOrderRequest(
+            symbol=ticker_symbol_str,
+            qty=quantity_to_sell,
+            side=OrderSide.SELL,
+            order_type=OrderType.MARKET,
+            time_in_force=TimeInForce.DAY,
+        )
+
+        trading_client.submit_order(order_data=market_order_request)
+
+        print(
+            f"SELL {ticker_symbol_str}: {quantity_to_sell:.6f} share(s), "
+            f"approx ${sell_notional:,.2f}, "
+            f"momentum={momentum_value:.4f}, current_weight={current_weight:.2%}"
+        )
+
+    def _get_strategy_momentum_value(self, model_output_dict: dict, algorithmic_strategy_str: str) -> float:
+        """
+        Chooses which model output to trade from.
+
+        Examples:
+            BULLISH  -> bullish
+            BEARISH  -> bearish
+            BALANCED -> balanced
+
+        Falls back to ensemble.
+        """
+
+        strategy_key: str = algorithmic_strategy_str.lower()
+
+        if strategy_key in model_output_dict:
+            return float(model_output_dict.get(strategy_key, 0.0))
+
+        return float(model_output_dict.get("ensemble", 0.0))
 
     def _get_backend_market_history_proto_dict(self) -> dict:
         """
@@ -896,60 +847,3 @@ class AlpacaAlgoTradingImplementation:
                 tweets.append(text)
 
         return tweets
-
-    def _build_market_history_proto_dict(self) -> dict:
-        """
-        Converts stored market/index bars into:
-            {
-                "SPY": momentum_pb2.OHLCVList(...),
-                "QQQ": momentum_pb2.OHLCVList(...),
-                ...
-            }
-
-        Your gRPC service expects market_history to be a map<string, OHLCVList>.
-        """
-
-        market_history_dict: dict = {}
-
-        for market_ticker in Constants.DATA_INGESTION_TICKER_SYMBOL_LIST:
-            points: list = []
-
-            for bar_dict in self._bar_history:
-                bar_symbol = bar_dict.get("symbol") or bar_dict.get("ticker") or bar_dict.get("S")
-
-                if bar_symbol != market_ticker:
-                    continue
-
-                points.append(self._bar_dict_to_ohlcv_proto(bar_dict))
-
-            if points:
-                market_history_dict[market_ticker] = momentum_pb2.OHLCVList(points=points)
-
-        return market_history_dict
-
-    def _bar_dict_to_ohlcv_proto(self, bar_dict: dict) -> momentum_pb2.OHLCV:
-        """
-        Converts one Alpaca bar dictionary into the OHLCV protobuf message.
-        """
-
-        raw_timestamp = (
-                bar_dict.get("timestamp")
-                or bar_dict.get("time")
-                or bar_dict.get("t")
-                or ""
-        )
-
-        return momentum_pb2.OHLCV(
-            date=str(raw_timestamp),
-            open=float(bar_dict.get("open", bar_dict.get("o", 0.0))),
-            high=float(bar_dict.get("high", bar_dict.get("h", 0.0))),
-            low=float(bar_dict.get("low", bar_dict.get("l", 0.0))),
-            close=float(bar_dict.get("close", bar_dict.get("c", 0.0))),
-            volume=float(bar_dict.get("volume", bar_dict.get("v", 0.0))),
-            adj_close=float(
-                bar_dict.get(
-                    "adj_close",
-                    bar_dict.get("close", bar_dict.get("c", 0.0)),
-                )
-            ),
-        )
