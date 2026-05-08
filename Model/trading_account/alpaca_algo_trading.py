@@ -1,16 +1,16 @@
 import os
-from pathlib import Path
 
 import dotenv
 
 from Model.utils.constants import Constants
 
+dotenv.load_dotenv()
+
 
 class AlpacaAlgoTrading:
 
     def __init__(self) -> None:
-        self._env_path: Path = Path(__file__).resolve().parent.parent / "Model" / ".env.example"
-        dotenv.load_dotenv(dotenv_path=self._env_path)
+        pass
 
     def get_alpaca_algo_trading_credentials_dict(self) -> dict[str, tuple[str, str]]:
         alpaca_bullish_api_key: str = os.getenv(Constants.ALPACA_BULLISH_API_KEY, "")
