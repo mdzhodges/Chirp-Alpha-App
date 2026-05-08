@@ -28,9 +28,6 @@ class Constants:
     ]
 
     TARGET_CASH_PERCENT: float = 0.50
-    TARGET_EQUITY_PERCENT: float = 0.50
-
-    PORTFOLIO_INITIALIZATION_TOLERANCE_PERCENT: float = 0.05
 
     TICKER_SYMBOL_BROAD_MARKET_INDEXES: list[str] = ["DIA", "QQQ", "SPY", "^VIX"]
 
