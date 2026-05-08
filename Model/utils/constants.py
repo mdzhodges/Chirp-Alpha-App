@@ -28,6 +28,16 @@ class Constants:
     ]
 
     TARGET_CASH_PERCENT: float = 0.50
+    INITIAL_CASH_WEIGHT: float = 0.50
+    INITIAL_EQUITY_WEIGHT_PER_SYMBOL: float = 0.05
+
+    MAX_EQUITY_WEIGHT_PER_SYMBOL: float = 0.10
+    MIN_EQUITY_WEIGHT_PER_SYMBOL: float = 0.025
+
+    MOMENTUM_BUY_THRESHOLD: float = 0.05
+    MOMENTUM_SELL_THRESHOLD: float = -0.05
+
+    DAILY_TRADE_WEIGHT: float = 0.005
 
     TICKER_SYMBOL_BROAD_MARKET_INDEXES: list[str] = ["DIA", "QQQ", "SPY", "^VIX"]
 
