@@ -20,6 +20,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -33,23 +34,42 @@ public class YahooFinanceTickerService {
     private final YahooAuthService authService;
     private final MomentumGrpcClient momentumClient;
     private final StockTwitsService stockTwitsService;
+    private final RedisCacheService cacheService;
 
     @Value("${LOGO_DEV_API_KEY:}")
     private String logoDevApiKey;
 
+    @Value("${cache.redis.ticker-ttl:PT5M}")
+    private Duration tickerTtl;
+
+    @Value("${cache.redis.momentum-ttl:PT1H}")
+    private Duration momentumTtl;
+
     @org.springframework.beans.factory.annotation.Autowired
     public YahooFinanceTickerService(ObjectMapper objectMapper, YahooAuthService authService, 
-                                    MomentumGrpcClient momentumClient, StockTwitsService stockTwitsService) {
+                                    MomentumGrpcClient momentumClient, StockTwitsService stockTwitsService,
+                                    RedisCacheService cacheService) {
         this.httpClient = authService.getHttpClient();
         this.objectMapper = objectMapper;
         this.authService = authService;
         this.momentumClient = momentumClient;
         this.stockTwitsService = stockTwitsService;
+        this.cacheService = cacheService;
     }
 
     public TickerResponse fetch(String symbol, String modelType, boolean skipMomentum) {
         log.debug("Fetching ticker data for: {} (skipMomentum={})", symbol, skipMomentum);
 
+        String normalizedSymbol = normalizeSymbol(symbol);
+        String normalizedModelType = normalizeModelType(modelType);
+        String cacheKey = "ticker:snapshot:" + normalizedSymbol + ":" + normalizedModelType + ":skipMomentum:" + skipMomentum;
+
+        Duration ttl = skipMomentum ? tickerTtl : momentumTtl;
+        return cacheService.getOrCompute(cacheKey, TickerResponse.class, ttl,
+                () -> computeTickerResponse(normalizedSymbol, normalizedModelType, skipMomentum));
+    }
+
+    private TickerResponse computeTickerResponse(String symbol, String modelType, boolean skipMomentum) {
         JsonNode chartRoot = fetchChartDataWithRetry(symbol);
         JsonNode result = chartRoot.path("chart").path("result").get(0);
         if (result == null) {
@@ -84,6 +104,14 @@ public class YahooFinanceTickerService {
     public record MomentumData(BigDecimal current, List<TickerResponse.MomentumPoint> history, List<String> signals) {}
 
     public MomentumData fetchMomentumData(String symbol, String modelType) {
+        String normalizedSymbol = normalizeSymbol(symbol);
+        String normalizedModelType = normalizeModelType(modelType);
+        String cacheKey = "ticker:momentum:" + normalizedSymbol + ":" + normalizedModelType;
+        return cacheService.getOrCompute(cacheKey, MomentumData.class, momentumTtl,
+                () -> computeMomentumData(normalizedSymbol, normalizedModelType));
+    }
+
+    private MomentumData computeMomentumData(String symbol, String modelType) {
         JsonNode stockHistory = fetchDailyChartData(symbol, "120d");
         Map<String, JsonNode> marketHistory = new HashMap<>();
         for (String m : List.of("SPY", "QQQ", "DIA", "^VIX")) {
@@ -135,6 +163,17 @@ public class YahooFinanceTickerService {
         BigDecimal current = singlePred != null ? BigDecimal.valueOf(singlePred.momentum()) : (preds.isEmpty() ? BigDecimal.ZERO : BigDecimal.valueOf(preds.get(0)));
         List<String> signals = singlePred != null ? singlePred.signals() : new ArrayList<>();
         return new MomentumData(current, historyPoints, signals);
+    }
+
+    private String normalizeSymbol(String symbol) {
+        if (symbol == null || symbol.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Symbol is required");
+        }
+        return symbol.trim().toUpperCase();
+    }
+
+    private String normalizeModelType(String modelType) {
+        return (modelType == null || modelType.isBlank()) ? "balanced" : modelType.trim().toLowerCase();
     }
 
     private JsonNode fetchDailyChartData(String symbol, String range) {

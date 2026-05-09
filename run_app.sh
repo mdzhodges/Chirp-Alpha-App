@@ -4,9 +4,18 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
+REDIS_CONTAINER_NAME="${REDIS_CONTAINER_NAME:-chirp-alpha-redis}"
+REDIS_IMAGE="${REDIS_IMAGE:-redis:7-alpine}"
+START_REDIS="${START_REDIS:-true}"
+REDIS_STARTED_BY_SCRIPT=false
+export CACHE_REDIS_LOG_OPS="${CACHE_REDIS_LOG_OPS:-true}"
+
 echo -e "${BLUE}Starting Chirp Alpha App services from Model directory...${NC}"
 
 cleanup() {
+    if [ "$REDIS_STARTED_BY_SCRIPT" = true ]; then
+        docker stop "$REDIS_CONTAINER_NAME" >/dev/null 2>&1 || true
+    fi
     kill 0
 }
 trap cleanup SIGINT SIGTERM
@@ -32,6 +41,38 @@ if [ -f "$ROOT_DIR/.env" ]; then
     echo -e "${CYAN}Loaded .env from $ROOT_DIR${NC}"
 else
     echo -e "${NC}Warning: No .env file found at $ROOT_DIR/.env${NC}"
+fi
+
+if [ "$START_REDIS" = true ]; then
+    if command -v docker >/dev/null 2>&1; then
+        if docker ps -a --format '{{.Names}}' | grep -qx "$REDIS_CONTAINER_NAME"; then
+            if ! docker ps --format '{{.Names}}' | grep -qx "$REDIS_CONTAINER_NAME"; then
+                echo -e "${GREEN}Starting existing Redis container ${REDIS_CONTAINER_NAME}...${NC}"
+                docker start "$REDIS_CONTAINER_NAME" >/dev/null
+                REDIS_STARTED_BY_SCRIPT=true
+            else
+                echo -e "${CYAN}Redis container ${REDIS_CONTAINER_NAME} is already running.${NC}"
+            fi
+        else
+            echo -e "${GREEN}Starting local Redis container (${REDIS_IMAGE})...${NC}"
+            docker run -d \
+                --name "$REDIS_CONTAINER_NAME" \
+                -p 6379:6379 \
+                "$REDIS_IMAGE" >/dev/null
+            REDIS_STARTED_BY_SCRIPT=true
+        fi
+
+        echo -e "${CYAN}Waiting for Redis to become ready...${NC}"
+        for _ in {1..30}; do
+            if docker exec "$REDIS_CONTAINER_NAME" redis-cli ping >/dev/null 2>&1; then
+                echo -e "${GREEN}Redis is ready on localhost:6379${NC}"
+                break
+            fi
+            sleep 1
+        done
+    else
+        echo -e "${NC}Warning: docker is not installed, so Redis will not be started automatically.${NC}"
+    fi
 fi
 
 # 3. Start Frontend

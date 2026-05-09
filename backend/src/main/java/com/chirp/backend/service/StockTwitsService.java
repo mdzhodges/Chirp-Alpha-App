@@ -11,15 +11,18 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 
 @Service
 public class StockTwitsService {
     
     private final HttpClient httpClient;
+    private final RedisCacheService cacheService;
     private static final String STOCKTWITS_URL_TEMPLATE = "https://api.stocktwits.com/api/2/streams/symbol/%s.json";
 
-    public StockTwitsService() {
+    public StockTwitsService(RedisCacheService cacheService) {
         this.httpClient = HttpClient.newHttpClient();
+        this.cacheService = cacheService;
     }
 
     public String getFeedForTicker(String symbol) {
@@ -27,6 +30,13 @@ public class StockTwitsService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Symbol is required");
         }
 
+        String normalized = symbol.trim().toUpperCase();
+        String cacheKey = "stocktwits:feed:" + normalized;
+
+        return cacheService.getOrCompute(cacheKey, String.class, Duration.ofMinutes(15), () -> fetchFeed(normalized));
+    }
+
+    private String fetchFeed(String symbol) {
         String encodedSymbol = URLEncoder.encode(symbol.trim(), StandardCharsets.UTF_8);
         URI uri = URI.create(String.format(STOCKTWITS_URL_TEMPLATE, encodedSymbol));
 
