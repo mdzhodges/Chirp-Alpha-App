@@ -346,12 +346,8 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
         self.pca_spy = ref["pca_spy"]
         self.target_mean = ref["target_mean"]
         self.target_std = ref["target_std"]
-<<<<<<< HEAD
         self.output_network = ref["output_network"]
         
-=======
-
->>>>>>> 6f19c86c9efc1095d89e1c819a9f1b3ad01030f6
         self.tokenizer, self.sentiment_model, self.canonical_col_for = (
             _load_sentiment_classifier(sentiment_model_name, self.device)
         )
