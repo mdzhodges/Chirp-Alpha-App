@@ -1,3 +1,5 @@
+from logging import Logger
+
 import pandas as pd
 import numpy as np
 import torch
@@ -6,8 +8,12 @@ import joblib
 import os
 import sys
 
+from Model.logger.logger import AppLogger
+
 # Add Model directory to path to import components
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+logger: Logger = AppLogger().get_logger(__name__)
 
 def _process_tensors(table, scaler=None):
     df = pd.DataFrame(list(table))
@@ -25,16 +31,16 @@ def _process_tensors(table, scaler=None):
 def main():
     data_path = "Model/data/data.parquet"
     if not os.path.exists(data_path):
-        print(f"Data not found at {data_path}")
+        logger.warning(f"Data not found at {data_path}")
         return
 
-    print(f"Loading data from {data_path}...")
+    logger.info(f"Loading data from {data_path}...")
     data = pd.read_parquet(data_path)
     
-    print("Fitting stock scaler...")
+    logger.info("Fitting stock scaler...")
     stock_scaler, stock_cols = _process_tensors(data["stock"])
     
-    print("Fitting spy scaler...")
+    logger.info("Fitting spy scaler...")
     spy_scaler, spy_cols = _process_tensors(data["spy"])
     
     os.makedirs("Model/inference/assets", exist_ok=True)
@@ -43,7 +49,7 @@ def main():
     joblib.dump(stock_cols, "Model/inference/assets/stock_cols.pkl")
     joblib.dump(spy_cols, "Model/inference/assets/spy_cols.pkl")
     
-    print("Scalers and column lists saved to Model/inference/assets/")
+    logger.info("Scalers and column lists saved to Model/inference/assets/")
 
 if __name__ == "__main__":
     main()

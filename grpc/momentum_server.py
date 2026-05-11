@@ -17,14 +17,17 @@ import os
 import sys
 import traceback
 from concurrent import futures
+from logging import Logger
 from typing import Optional
 
-import grpc
 import numpy as np
 import pandas as pd
 import pandas_ta as ta
 import torch
 import torch.nn.functional as F
+
+import grpc
+from Model.logger.logger import AppLogger
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
@@ -35,7 +38,6 @@ import momentum_pb2_grpc
 from model_final.stock_nn import StockNetwork
 from model_final.index_nn import IndexNetwork
 from model_final.final_output import OutputNN
-
 
 # ---------------------------------------------------------------------------
 # FEATURE ENGINEERING
@@ -167,7 +169,6 @@ def _load_sentiment_classifier(model_name: str, device: torch.device):
 
     model.eval().to(device)
 
-
     # need to qunatize this model to make it more efficeient of the grpc server when deployed
     # perhaps also switch to torch.serve instead of loading the model into memory, could reduce memory footprint
     # we HAVE to use a redis cache for commonly fetch tickers, would help alot for speed
@@ -207,14 +208,14 @@ def _load_sentiment_classifier(model_name: str, device: torch.device):
 
 @torch.no_grad()
 def _texts_to_sentiment_features(
-    texts: list[str],
-    tokenizer,
-    model,
-    canonical_col_for: dict[int, int],
-    *,
-    device: torch.device,
-    max_length: int = 128,
-    batch_size: int = 64,
+        texts: list[str],
+        tokenizer,
+        model,
+        canonical_col_for: dict[int, int],
+        *,
+        device: torch.device,
+        max_length: int = 128,
+        batch_size: int = 64,
 ) -> Optional[torch.Tensor]:
     """Returns a (1, 5) CPU tensor: [mean_bull, mean_bear, mean_neu, count, std_bull].
     Returns None if no usable text was provided so the caller can fall back
@@ -225,7 +226,7 @@ def _texts_to_sentiment_features(
 
     all_probs: list[torch.Tensor] = []
     for i in range(0, len(cleaned), batch_size):
-        chunk = cleaned[i : i + batch_size]
+        chunk = cleaned[i: i + batch_size]
         inputs = tokenizer(
             chunk,
             return_tensors="pt",
@@ -261,11 +262,12 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
 
     def __init__(self, models_dir: Optional[str] = None):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print(f"Using device: {self.device}")
+        self._logger = AppLogger.get_logger(self.__class__.__name__)
+        self._logger.info(f"Using device: {self.device}")
 
         if models_dir is None:
             models_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "models"))
-        
+
         self.models = {}
         model_files = {
             "balanced": "balanced.pt",
@@ -277,40 +279,40 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
         # Historical accuracy stats for weighting the ensemble
         self.model_stats = {
             "balanced": {"up": 0.5189, "down": 0.5116},
-            "bullish":  {"up": 0.5288, "down": 0.4991},
-            "bearish":  {"up": 0.3023, "down": 0.7215},
-            "high_ic":  {"up": 0.3863, "down": 0.6426}
+            "bullish": {"up": 0.5288, "down": 0.4991},
+            "bearish": {"up": 0.3023, "down": 0.7215},
+            "high_ic": {"up": 0.3863, "down": 0.6426}
         }
 
         for model_id, filename in model_files.items():
             path = os.path.join(models_dir, filename)
             if not os.path.exists(path):
-                print(f"WARNING: Model {model_id} not found at {path}. Skipping.")
+                self._logger.warning(f"Model {model_id} not found at {path}. Skipping.")
                 continue
-            
-            print(f"Loading model {model_id} from {path}...")
+
+            self._logger.info(f"Loading model {model_id} from {path}...")
             weights = torch.load(path, map_location=self.device, weights_only=False)
-            
+
             scalers = weights.get("scalers")
             feature_cols = weights.get("feature_cols")
             pca_models = weights.get("pca_models", {})
             target_stats = weights.get("target_stats", {"mean": 0.0, "std": 1.0})
-            
+
             stock_in_dim = weights["stock_network"]["input_layer.0.weight"].shape[1]
             spy_in_dim = weights["index_network"]["input_layer.0.weight"].shape[1]
-            
+
             stock_net = StockNetwork(input_dim=stock_in_dim).to(self.device)
             index_net = IndexNetwork(input_dim=spy_in_dim).to(self.device)
             output_net = OutputNN(numeric_dim=48, text_dim=5).to(self.device)
-            
+
             stock_net.load_state_dict(self._extract_state(weights, "stock_network"), strict=False)
             index_net.load_state_dict(self._extract_state(weights, "index_network"), strict=False)
             output_net.load_state_dict(self._extract_state(weights, "output_network"), strict=False)
-            
+
             stock_net.eval()
             index_net.eval()
             output_net.eval()
-            
+
             self.models[model_id] = {
                 "stock_network": stock_net,
                 "index_network": index_net,
@@ -329,10 +331,11 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
             raise RuntimeError(f"No models found in {models_dir}")
 
         # Shared sentiment classifier (using config from the first model or default)
-        weights_ref = torch.load(os.path.join(models_dir, list(model_files.values())[0]), map_location="cpu", weights_only=False)
+        weights_ref = torch.load(os.path.join(models_dir, list(model_files.values())[0]), map_location="cpu",
+                                 weights_only=False)
         sentiment_model_name = weights_ref.get("sentiment_model", "yiyanghkust/finbert-tone")
-        print(f"Loading shared sentiment classifier: {sentiment_model_name}")
-        
+        self._logger.info(f"Loading shared sentiment classifier: {sentiment_model_name}")
+
         # Shared attributes for feature building logic
         ref = self.models.get("balanced") or list(self.models.values())[0]
         self.stock_cols = ref["stock_cols"]
@@ -343,13 +346,12 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
         self.pca_spy = ref["pca_spy"]
         self.target_mean = ref["target_mean"]
         self.target_std = ref["target_std"]
-        
+
         self.tokenizer, self.sentiment_model, self.canonical_col_for = (
             _load_sentiment_classifier(sentiment_model_name, self.device)
         )
 
-        print(f"Successfully loaded {len(self.models)} models.")
-
+        self._logger.info(f"Successfully loaded {len(self.models)} models.")
 
     # -----------------------------------------------------------------------
     # Loading helpers
@@ -365,7 +367,7 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
         val = weights[key]
         # Handle {"state_dict": {...}} vs {...}
         if isinstance(val, dict) and "state_dict" in val and all(
-            isinstance(k, str) for k in val.keys()
+                isinstance(k, str) for k in val.keys()
         ) and len(val) <= 3:
             return val["state_dict"]
         return val
@@ -410,45 +412,45 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
             ])
             if not part.empty:
                 market_parts.append(part)
-    
+
         if not market_parts:
             return pd.DataFrame()
-    
+
         market_df = market_parts[0]
         for p in market_parts[1:]:
             market_df = market_df.merge(p, on="Date", how="outer")
         market_df["Date"] = pd.to_datetime(market_df["Date"], errors="coerce")
         market_df = market_df.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
-    
+
         # Forward-fill OHLCV across indices so a missing day for one index
         # doesn't poison the feature row for the others.
         ohlcv_cols = [c for c in market_df.columns if c != "Date"]
         market_df[ohlcv_cols] = market_df[ohlcv_cols].ffill()
-    
+
         # Drop any leading rows that are still NaN (couldn't be ffilled).
         market_df = market_df.dropna(subset=ohlcv_cols, how="all").reset_index(drop=True)
-    
+
         market_feats = _create_spy_features(market_df)
-    
+
         # Sanity check
         if not market_feats.empty:
             latest = market_feats.iloc[-1]
             nan_cols = [c for c in self.spy_cols if c in latest.index and pd.isna(latest[c])]
             if nan_cols:
-                print(
-                    f"WARNING: market_feats latest row has {len(nan_cols)} NaN columns. "
+                self._logger.warning(
+                    f"Market_feats latest row has {len(nan_cols)} NaN columns. "
                     f"Got {len(market_df)} rows. First NaN cols: {nan_cols[:5]}"
                 )
-    
+
         return market_feats
 
     def _slice_one_row(
-        self,
-        feats: pd.DataFrame,
-        offset: int,
-        expected_cols: list[str],
-        *,
-        kind: str,
+            self,
+            feats: pd.DataFrame,
+            offset: int,
+            expected_cols: list[str],
+            *,
+            kind: str,
     ) -> Optional[pd.DataFrame]:
         """Pick one row at -1-offset (offset=0 means the latest row).
         Returns None if the offset is out of bounds. Hard-fails on column
@@ -456,7 +458,7 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
         idx = -1 - offset
         if abs(idx) > len(feats):
             return None
-        sub = feats.iloc[idx : idx + 1] if idx != -1 else feats.iloc[-1:]
+        sub = feats.iloc[idx: idx + 1] if idx != -1 else feats.iloc[-1:]
 
         missing = [c for c in expected_cols if c not in sub.columns]
         if missing:
@@ -504,26 +506,26 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
         m_row = self._slice_one_row(market_feats, offset, m["spy_cols"], kind="market")
         if s_row is None or m_row is None:
             return None
-    
+
         s_tensor = self._scale(s_row, m["stock_scaler"], pca_model=m["pca_stock"])
         i_tensor = self._scale(m_row, m["spy_scaler"], pca_model=m["pca_spy"])
 
         with torch.no_grad():
             s_feat = m["stock_network"](s_tensor)
             i_feat = m["index_network"](i_tensor)
-            
+
             if s_feat.dim() == 3 and text_feat.dim() == 2:
                 text_feat = text_feat.unsqueeze(1).expand(-1, s_feat.size(1), -1)
-            
+
             combined = torch.cat((s_feat, i_feat, text_feat), dim=-1)
             raw_output = m["output_network"](combined)
-            
+
             if raw_output.dim() == 3:
                 raw_output = raw_output[:, -1, :]
 
             standardized_val = raw_output.squeeze().item()
             unstandardized_val = (standardized_val * m["target_std"]) + m["target_mean"]
-            
+
         return float(unstandardized_val)
 
     def _predict_at_offset(self, model_id, stock_feats, market_feats, offset, text_feat):
@@ -536,19 +538,19 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
                     # Determine weight based on prediction direction and model accuracy
                     stats = self.model_stats.get(m_id, {"up": 0.5, "down": 0.5})
                     weight = stats["up"] if p > 0 else stats["down"]
-                    
+
                     weighted_sum += p * weight
                     total_weight += weight
-            
+
             if total_weight == 0:
                 return 0.0
             return weighted_sum / total_weight
-        
+
         pred = self._predict_single_model(model_id, stock_feats, market_feats, offset, text_feat)
         if pred is None and model_id != "balanced":
             # Fallback to balanced if requested model fails
             pred = self._predict_single_model("balanced", stock_feats, market_feats, offset, text_feat)
-            
+
         return pred
 
     # -----------------------------------------------------------------------
@@ -558,9 +560,9 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
     def PredictMomentum(self, request, context):
         try:
 
-            print(request.ticker)
+            self._logger.info(request.ticker)
             model_id = request.model_type or "ensemble"
-                
+
             stock_feats = self._build_stock_features(request.stock_history, request.ticker)
             if stock_feats.empty:
                 return momentum_pb2.MomentumResponse(momentum=0.0)
@@ -594,14 +596,14 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
 
             # --- Flash Signal Detection ---
             signals = []
-            
+
             bearish_p = model_preds.get("bearish")
             bullish_p = model_preds.get("bullish")
-            
+
             # 1. Bias Flips
             if bearish_p is not None and bearish_p > 0.25:
                 signals.append("SIGNAL: Bearish Persona has flipped Bullish")
-            
+
             if bullish_p is not None and bullish_p < -0.25:
                 signals.append("SIGNAL: Bullish Persona has flipped Bearish")
 
@@ -610,7 +612,7 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
                 model_outputs=model_preds,
                 signals=signals
             )
-            
+
 
         except Exception as e:
             traceback.print_exc()
@@ -621,7 +623,7 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
     def BatchPredictMomentum(self, request, context):
         try:
             model_id = request.model_type or "ensemble"
-                
+
             stock_feats = self._build_stock_features(request.stock_history, request.ticker)
             if stock_feats.empty:
                 return momentum_pb2.BatchMomentumResponse(momentums=[0.0] * len(request.offsets))
@@ -647,12 +649,12 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
             return momentum_pb2.BatchMomentumResponse()
 
 
-
 def serve():
+    logger: Logger = AppLogger().get_logger(__name__)
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     momentum_pb2_grpc.add_MomentumServiceServicer_to_server(MomentumService(), server)
     server.add_insecure_port('[::]:50051')
-    print("Starting gRPC server on port 50051...")
+    logger.info("Starting gRPC server on port 50051...")
     server.start()
     server.wait_for_termination()
 
