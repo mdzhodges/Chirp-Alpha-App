@@ -4,7 +4,7 @@ from logging import Formatter
 from logging import Logger
 from logging import StreamHandler
 
-from logger.logger_color_fortmatter import LoggerColorFormatter
+from Model.logger.logger_color_fortmatter import LoggerColorFormatter
 
 
 class AppLogger:

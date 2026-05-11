@@ -1,7 +1,7 @@
 import logging
 from logging import Formatter
 
-from utils.constants import Constants
+from Model.utils.constants import Constants
 
 
 class LoggerColorFormatter(Formatter):
