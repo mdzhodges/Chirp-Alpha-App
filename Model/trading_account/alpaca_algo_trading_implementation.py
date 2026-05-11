@@ -544,9 +544,9 @@ class AlpacaAlgoTradingImplementation:
         Examples:
             BULLISH  -> bullish
             BEARISH  -> bearish
-            BALANCED -> balanced
+            ENSEMBLE -> ensemble
 
-        Falls back to ensemble.
+        Falls back to balanced.
         """
 
         strategy_key: str = algorithmic_strategy_str.lower()
@@ -554,7 +554,7 @@ class AlpacaAlgoTradingImplementation:
         if strategy_key in model_output_dict:
             return float(model_output_dict.get(strategy_key, 0.0))
 
-        return float(model_output_dict.get("ensemble", 0.0))
+        return float(model_output_dict.get("balanced", 0.0))
 
     def _get_backend_market_history_proto_dict(self) -> dict:
         """
