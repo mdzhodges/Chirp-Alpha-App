@@ -129,8 +129,14 @@ public class YahooFinanceTickerService {
             JsonNode messages = tweetsRoot.path("messages");
             if (messages.isArray()) {
                 for (JsonNode msg : messages) {
-                    tweets.add(msg.path("body").asText());
+                    JsonNode user = msg.path("user");
+                    int followers = user.path("followers").asInt(0);
+                    boolean isOfficial = user.path("official").asBoolean(false);
 
+                    // Filter for high-quality accounts (Min 1000 followers or Official)
+                    if (followers >= 500 || isOfficial) {
+                        tweets.add(msg.path("body").asText());
+                    }
                 }
             }
         } catch (IOException e) {
@@ -395,13 +401,15 @@ public class YahooFinanceTickerService {
         String type = (modelType == null || modelType.isEmpty()) ? "balanced" : modelType.toLowerCase();
         return switch (type) {
             case "bullish" -> new TickerResponse.ModelStats("Bullish", 
-                new BigDecimal("0.5137"), new BigDecimal("0.5288"), new BigDecimal("0.4991"), new BigDecimal("0.0431"));
+                new BigDecimal("0.5176"), new BigDecimal("0.6960"), new BigDecimal("0.3432"), new BigDecimal("0.0494"));
             case "bearish" -> new TickerResponse.ModelStats("Bearish", 
-                new BigDecimal("0.5158"), new BigDecimal("0.3023"), new BigDecimal("0.7215"), new BigDecimal("0.0441"));
-            case "ensemble", "consensus", "high_ic" -> new TickerResponse.ModelStats("Consensus", 
-                new BigDecimal("0.5181"), new BigDecimal("0.3863"), new BigDecimal("0.6426"), new BigDecimal("0.0519"));
+                new BigDecimal("0.4932"), new BigDecimal("0.3842"), new BigDecimal("0.6335"), new BigDecimal("0.0184"));
+            case "high_ic" -> new TickerResponse.ModelStats("High IC", 
+                new BigDecimal("0.5206"), new BigDecimal("0.5796"), new BigDecimal("0.4721"), new BigDecimal("0.0668"));
+            case "ensemble", "consensus" -> new TickerResponse.ModelStats("Consensus", 
+                new BigDecimal("0.5093"), new BigDecimal("0.5425"), new BigDecimal("0.4934"), new BigDecimal("0.0495"));
             default -> new TickerResponse.ModelStats("Balanced", 
-                new BigDecimal("0.5152"), new BigDecimal("0.5189"), new BigDecimal("0.5116"), new BigDecimal("0.0450"));
+                new BigDecimal("0.5059"), new BigDecimal("0.5102"), new BigDecimal("0.5247"), new BigDecimal("0.0634"));
         };
     }
 

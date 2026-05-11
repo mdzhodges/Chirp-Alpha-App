@@ -49,6 +49,17 @@
   color: var(--text-main);
 }
 
+.userDetails {
+  display: flex;
+  flex-direction: column;
+}
+
+.followers {
+  font-family: var(--font-body);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
 .messageBody {
   color: var(--text-muted);
   font-family: var(--font-body);

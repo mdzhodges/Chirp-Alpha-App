@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import styles from './StockTwitsFeed.module.css';
 
-export default function StockTwitsFeed({ symbol, limit = 5 }) {
+export default function StockTwitsFeed({ symbol, limit = 5, followerThreshold = 500 }) {
   const [messages, setMessages] = useState([]);
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState(null);
@@ -9,23 +9,29 @@ export default function StockTwitsFeed({ symbol, limit = 5 }) {
 
   useEffect(() => {
     if (!symbol) return;
-    
+
     const controller = new AbortController();
-    
+
     async function fetchFeed() {
       setStatus('loading');
       setError(null);
       setVisibleCount(limit);
-      
+
       try {
         const response = await fetch(`/api/momentum/feed/${encodeURIComponent(symbol)}`, {
           signal: controller.signal
         });
-        
+
         if (!response.ok) throw new Error(`Feed request failed (${response.status})`);
-        
+
         const data = await response.json();
-        setMessages(data.messages || []);
+
+        // Filter by follower count to remove "BS"
+        const filteredMessages = (data.messages || []).filter(msg => 
+          msg.user && (msg.user.followers >= followerThreshold || msg.user.official)
+        );
+
+        setMessages(filteredMessages);
         setStatus('success');
       } catch (err) {
         if (err.name === 'AbortError') return;
@@ -36,7 +42,7 @@ export default function StockTwitsFeed({ symbol, limit = 5 }) {
 
     fetchFeed();
     return () => controller.abort();
-  }, [symbol, limit]);
+  }, [symbol, limit, followerThreshold]);
 
   // Helper function to format the raw API timestamp nicely
   const formatTime = (dateString) => {
@@ -62,9 +68,9 @@ export default function StockTwitsFeed({ symbol, limit = 5 }) {
 
       {status === 'loading' && <div className={styles.statusMessage}>Loading feed...</div>}
       {status === 'error' && <div className={styles.errorMessage}>Error: {error}</div>}
-      
+
       {status === 'success' && messages.length === 0 && (
-        <div className={styles.statusMessage}>No recent momentum found.</div>
+        <div className={styles.statusMessage}>No high-value momentum found (Min. {followerThreshold} followers).</div>
       )}
 
       {status === 'success' && messages.slice(0, visibleCount).map((msg) => (
@@ -77,7 +83,10 @@ export default function StockTwitsFeed({ symbol, limit = 5 }) {
                 alt={msg.user.username} 
                 className={styles.avatar}
               />
-              <span className={styles.username}>{msg.user.username}</span>
+              <div className={styles.userDetails}>
+                <span className={styles.username}>{msg.user.username}</span>
+                <span className={styles.followers}>{msg.user.followers.toLocaleString()} followers</span>
+              </div>
             </div>
             {/* The newly formatted timestamp pushed to the right side */}
             <span className={styles.timestamp}>{formatTime(msg.created_at)}</span>

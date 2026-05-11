@@ -276,10 +276,10 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
 
         # Historical accuracy stats for weighting the ensemble
         self.model_stats = {
-            "balanced": {"up": 0.5189, "down": 0.5116},
-            "bullish":  {"up": 0.5288, "down": 0.4991},
-            "bearish":  {"up": 0.3023, "down": 0.7215},
-            "high_ic":  {"up": 0.3863, "down": 0.6426}
+            "balanced": {"up": 0.5102, "down": 0.5247},
+            "bullish":  {"up": 0.6960, "down": 0.3432},
+            "bearish":  {"up": 0.3842, "down": 0.6335},
+            "high_ic":  {"up": 0.5796, "down": 0.4721}
         }
 
         for model_id, filename in model_files.items():
@@ -343,6 +343,7 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
         self.pca_spy = ref["pca_spy"]
         self.target_mean = ref["target_mean"]
         self.target_std = ref["target_std"]
+        self.output_network = ref["output_network"]
         
         self.tokenizer, self.sentiment_model, self.canonical_col_for = (
             _load_sentiment_classifier(sentiment_model_name, self.device)
