@@ -1,9 +1,15 @@
+from logging import Logger
+
 import grpc
 import momentum_pb2
 import momentum_pb2_grpc
 import datetime
 
+from Model.logger.logger import AppLogger
+
+
 def run():
+    logger: Logger = AppLogger().get_logger(__name__)
     with grpc.insecure_channel('localhost:50051') as channel:
         stub = momentum_pb2_grpc.MomentumServiceStub(channel)
         
@@ -46,9 +52,9 @@ def run():
             tweets=["AAPL is looking strong today!", "Bullish on Apple"]
         )
         
-        print("Sending request to gRPC server...")
+        logger.info("Sending request to gRPC server...")
         response = stub.PredictMomentum(request)
-        print(f"Momentum Response: {response.momentum}")
+        logger.info(f"Momentum Response: {response.momentum}")
 
 if __name__ == '__main__':
     run()
