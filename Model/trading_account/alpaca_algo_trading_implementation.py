@@ -14,6 +14,8 @@ from alpaca.trading import Position, MarketOrderRequest, Order
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
 
+from Model.logger.logger import AppLogger
+
 _PROJECT_ROOT = _os.path.abspath(
     _os.path.join(_os.path.dirname(__file__), "../..")
 )
@@ -68,6 +70,7 @@ class AlpacaAlgoTradingImplementation:
 
     def __init__(self, alpaca_algo_trading_credentials_dict: dict[str, tuple[str, str]]) -> None:
         self._algorithmic_trading_credentials_dict: dict[str, tuple[str, str]] = alpaca_algo_trading_credentials_dict
+        self._logger = AppLogger.get_logger(self.__class__.__name__)
 
         self._bar_queue: queue.Queue[dict] = queue.Queue()
         self._bar_history: deque[dict] = deque(maxlen=5000)
@@ -94,9 +97,9 @@ class AlpacaAlgoTradingImplementation:
             alpaca_api_key: str = api_key_tuple[0]
             alpaca_api_key_secret: str = api_key_tuple[1]
 
-            print("=" * 100)
-            print(f"Executing Trading Algorithm: {algorithmic_strategy_str.upper()}")
-            print("=" * 100)
+            self._logger.info("=" * 100)
+            self._logger.info(f"Executing Trading Algorithm: {algorithmic_strategy_str.upper()}")
+            self._logger.info("=" * 100)
 
             trading_client: TradingClient = TradingClient(
                 api_key=alpaca_api_key,
@@ -131,15 +134,15 @@ class AlpacaAlgoTradingImplementation:
                 portfolio_cash: float = account_dict.get("cash", 0.0)
                 portfolio_equity: float = account_dict.get("equity", 0.0)
 
-                print(
+                self._logger.info(
                     f"Timestamp: {current_datetime.time()} -> "
                     f"Portfolio Equity: {portfolio_equity:,.2f} -> "
                     f"Portfolio Cash Available: ${portfolio_cash:,.2f}"
                 )
-                print("=" * 150)
+                self._logger.info("=" * 150)
 
             except Exception as e:
-                print(f"Exception Thrown: {e}")
+                self._logger.error(f"Exception Thrown: {e}")
 
 
     def _get_model_predictions_dict(self) -> dict[str, float]:
@@ -165,7 +168,7 @@ class AlpacaAlgoTradingImplementation:
         market_history_dict: dict = self._get_backend_market_history_proto_dict()
 
         if not market_history_dict:
-            print("No market history returned from backend.")
+            self._logger.warning("No market history returned from backend.")
             return model_predictions_dict
 
         for ticker in Constants.DATA_INGESTION_TICKER_SYMBOL_LIST:
@@ -174,7 +177,7 @@ class AlpacaAlgoTradingImplementation:
                 tweets_list: list[str] = self._get_backend_tweets_list(ticker=ticker)
 
                 if len(stock_history_list) < 60:
-                    print(
+                    self._logger.warning(
                         f"Skipping {ticker}: backend returned only "
                         f"{len(stock_history_list)} stock history rows."
                     )
@@ -207,11 +210,11 @@ class AlpacaAlgoTradingImplementation:
                 model_predictions_dict[ticker] = ticker_outputs
 
             except _grpc.RpcError as e:
-                print(f"gRPC error for {ticker}: {e.code()} - {e.details()}")
+                self._logger.error(f"gRPC error for {ticker}: {e.code()} - {e.details()}")
                 model_predictions_dict[ticker] = self._empty_prediction_dict()
 
             except Exception as e:
-                print(f"Prediction error for {ticker}: {e}")
+                self._logger.error(f"Prediction error for {ticker}: {e}")
                 model_predictions_dict[ticker] = self._empty_prediction_dict()
 
         return model_predictions_dict
@@ -232,7 +235,7 @@ class AlpacaAlgoTradingImplementation:
         portfolio_tickers: list[str] = Constants.PORTFOLIO_TICKER_SYMBOL_LIST
 
         if not portfolio_tickers:
-            print("No portfolio tickers configured. Skipping portfolio initialization.")
+            self._logger.warning("No portfolio tickers configured. Skipping portfolio initialization.")
             return
 
         portfolio_value: float = float(
@@ -244,11 +247,11 @@ class AlpacaAlgoTradingImplementation:
         cash_available: float = float(account_dict.get("cash", 0.0))
 
         if portfolio_value <= 0:
-            print("Invalid portfolio value. Skipping portfolio initialization.")
+            self._logger.warning("Invalid portfolio value. Skipping portfolio initialization.")
             return
 
         if cash_available <= 0:
-            print("No cash available. Skipping portfolio initialization.")
+            self._logger.info("No cash available. Skipping portfolio initialization.")
             return
 
         target_cash_amount: float = portfolio_value * Constants.TARGET_CASH_PERCENT
@@ -256,7 +259,7 @@ class AlpacaAlgoTradingImplementation:
         cash_to_invest: float = cash_available - target_cash_amount
 
         if cash_to_invest <= 0:
-            print(
+            self._logger.warning(
                 f"Cash available ${cash_available:,.2f} is already at or below "
                 f"target cash amount ${target_cash_amount:,.2f}. Skipping initialization."
             )
@@ -264,13 +267,13 @@ class AlpacaAlgoTradingImplementation:
 
         dollars_per_ticker: float = cash_to_invest / len(portfolio_tickers)
 
-        print("Initializing Portfolio Holdings:")
-        print(f"Portfolio Value: ${portfolio_value:,.2f}")
-        print(f"Cash Available: ${cash_available:,.2f}")
-        print(f"Target Cash: ${target_cash_amount:,.2f}")
-        print(f"Cash To Invest: ${cash_to_invest:,.2f}")
-        print(f"Dollars Per Ticker: ${dollars_per_ticker:,.2f}")
-        print("=" * 100)
+        self._logger.info("Initializing Portfolio Holdings:")
+        self._logger.info(f"Portfolio Value: ${portfolio_value:,.2f}")
+        self._logger.info(f"Cash Available: ${cash_available:,.2f}")
+        self._logger.info(f"Target Cash: ${target_cash_amount:,.2f}")
+        self._logger.info(f"Cash To Invest: ${cash_to_invest:,.2f}")
+        self._logger.info(f"Dollars Per Ticker: ${dollars_per_ticker:,.2f}")
+        self._logger.info("=" * 100)
 
         for ticker_symbol_str in portfolio_tickers:
             try:
@@ -286,17 +289,17 @@ class AlpacaAlgoTradingImplementation:
                     order_data=market_order_request
                 )
 
-                print(
+                self._logger.info(
                     f"Submitted BUY order for approximately "
                     f"${dollars_per_ticker:,.2f} of {ticker_symbol_str}."
                 )
 
             except Exception as e:
-                print(f"Failed to initialize {ticker_symbol_str}: {e}")
+                self._logger.error(f"Failed to initialize {ticker_symbol_str}: {e}")
 
-        print("=" * 100)
-        print("Portfolio initialization orders submitted.")
-        print("=" * 100)
+        self._logger.info("=" * 100)
+        self._logger.info("Portfolio initialization orders submitted.")
+        self._logger.info("=" * 100)
 
     def _execute_daily_momentum_policy(self, trading_client: TradingClient, model_predictions_dict: dict,
                                        algorithmic_strategy_str: str, account_dict: dict[str, Any],
@@ -318,8 +321,8 @@ class AlpacaAlgoTradingImplementation:
             maximum 10%
         """
 
-        print(f"Executing Daily Momentum Policy for: {algorithmic_strategy_str.upper()}")
-        print("=" * 100)
+        self._logger.info(f"Executing Daily Momentum Policy for: {algorithmic_strategy_str.upper()}")
+        self._logger.info("=" * 100)
 
         portfolio_tickers: list[str] = Constants.PORTFOLIO_TICKER_SYMBOL_LIST
 
@@ -328,7 +331,7 @@ class AlpacaAlgoTradingImplementation:
         cash_available: float = float(account_dict.get("cash", 0.0))
 
         if portfolio_value <= 0:
-            print("Invalid portfolio value. Skipping daily momentum policy.")
+            self._logger.warning("Invalid portfolio value. Skipping daily momentum policy.")
             return
 
         trade_notional: float = portfolio_value * Constants.DAILY_TRADE_WEIGHT
@@ -338,18 +341,18 @@ class AlpacaAlgoTradingImplementation:
             for position in all_positions_list
         }
 
-        print("=" * 100)
-        print("Executing Daily Momentum Policy")
-        print(f"Portfolio Value: ${portfolio_value:,.2f}")
-        print(f"Cash Available: ${cash_available:,.2f}")
-        print(f"Trade Size: ${trade_notional:,.2f}")
-        print("=" * 100)
+        self._logger.info("=" * 100)
+        self._logger.info("Executing Daily Momentum Policy")
+        self._logger.info(f"Portfolio Value: ${portfolio_value:,.2f}")
+        self._logger.info(f"Cash Available: ${cash_available:,.2f}")
+        self._logger.info(f"Trade Size: ${trade_notional:,.2f}")
+        self._logger.info("=" * 100)
 
         for ticker_symbol_str in portfolio_tickers:
             model_output_dict: dict = model_predictions_dict.get(ticker_symbol_str, {})
 
             if not model_output_dict:
-                print(f"Skipping {ticker_symbol_str}: no model output found.")
+                self._logger.warning(f"Skipping {ticker_symbol_str}: no model output found.")
                 continue
 
             momentum_value: float = self._get_strategy_momentum_value(
@@ -360,7 +363,7 @@ class AlpacaAlgoTradingImplementation:
             position: Position | None = position_by_symbol_dict.get(ticker_symbol_str)
 
             if position is None:
-                print(f"Skipping {ticker_symbol_str}: no current position found.")
+                self._logger.warning(f"Skipping {ticker_symbol_str}: no current position found.")
                 continue
 
             current_market_value: float = float(
@@ -403,12 +406,12 @@ class AlpacaAlgoTradingImplementation:
                 )
 
             else:
-                print(
+                self._logger.info(
                     f"HOLD {ticker_symbol_str}: momentum={momentum_value:.4f}, "
                     f"weight={current_weight:.2%}"
                 )
 
-        print("=" * 100)
+        self._logger.info("=" * 100)
 
     def _try_submit_momentum_buy_order(
             self,
@@ -432,7 +435,7 @@ class AlpacaAlgoTradingImplementation:
         available_room_to_buy: float = max_market_value - current_market_value
 
         if available_room_to_buy <= 0:
-            print(
+            self._logger.warning(
                 f"BUY BLOCKED {ticker_symbol_str}: already at or above max weight. "
                 f"momentum={momentum_value:.4f}, weight={current_weight:.2%}"
             )
@@ -445,7 +448,7 @@ class AlpacaAlgoTradingImplementation:
         )
 
         if buy_notional <= 0:
-            print(
+            self._logger.warning(
                 f"BUY BLOCKED {ticker_symbol_str}: no cash or room available. "
                 f"momentum={momentum_value:.4f}"
             )
@@ -461,7 +464,7 @@ class AlpacaAlgoTradingImplementation:
 
         trading_client.submit_order(order_data=market_order_request)
 
-        print(
+        self._logger.info(
             f"BUY {ticker_symbol_str}: ${buy_notional:,.2f}, "
             f"momentum={momentum_value:.4f}, current_weight={current_weight:.2%}"
         )
@@ -483,11 +486,11 @@ class AlpacaAlgoTradingImplementation:
         """
 
         if current_quantity <= 0:
-            print(f"SELL BLOCKED {ticker_symbol_str}: no shares owned.")
+            self._logger.warning(f"SELL BLOCKED {ticker_symbol_str}: no shares owned.")
             return
 
         if current_price <= 0:
-            print(f"SELL BLOCKED {ticker_symbol_str}: invalid current price.")
+            self._logger.warning(f"SELL BLOCKED {ticker_symbol_str}: invalid current price.")
             return
 
         min_market_value: float = (
@@ -497,7 +500,7 @@ class AlpacaAlgoTradingImplementation:
         available_room_to_sell: float = current_market_value - min_market_value
 
         if available_room_to_sell <= 0:
-            print(
+            self._logger.warning(
                 f"SELL BLOCKED {ticker_symbol_str}: already at or below min weight. "
                 f"momentum={momentum_value:.4f}, weight={current_weight:.2%}"
             )
@@ -512,7 +515,7 @@ class AlpacaAlgoTradingImplementation:
         quantity_to_sell: float = sell_notional / current_price
 
         if quantity_to_sell <= 0:
-            print(f"SELL BLOCKED {ticker_symbol_str}: calculated sell quantity is 0.")
+            self._logger.warning(f"SELL BLOCKED {ticker_symbol_str}: calculated sell quantity is 0.")
             return
 
         if quantity_to_sell > current_quantity:
@@ -528,7 +531,7 @@ class AlpacaAlgoTradingImplementation:
 
         trading_client.submit_order(order_data=market_order_request)
 
-        print(
+        self._logger.info(
             f"SELL {ticker_symbol_str}: {quantity_to_sell:.6f} share(s), "
             f"approx ${sell_notional:,.2f}, "
             f"momentum={momentum_value:.4f}, current_weight={current_weight:.2%}"
@@ -568,7 +571,7 @@ class AlpacaAlgoTradingImplementation:
                 )
 
                 if len(market_points) < 60:
-                    print(
+                    self._logger.warning(
                         f"Skipping market ticker {market_ticker}: backend returned only "
                         f"{len(market_points)} history rows."
                     )
@@ -579,7 +582,7 @@ class AlpacaAlgoTradingImplementation:
                 )
 
             except Exception as e:
-                print(f"Backend market history error for {market_ticker}: {e}")
+                self._logger.error(f"Backend market history error for {market_ticker}: {e}")
 
         return market_history_dict
 
@@ -693,7 +696,7 @@ class AlpacaAlgoTradingImplementation:
         try:
             feed_json: Any = self._get_json_from_backend(url=url)
         except Exception as e:
-            print(f"Tweet feed error for {ticker}: {e}")
+            self._logger.error(f"Tweet feed error for {ticker}: {e}")
             return []
 
         return self._extract_tweet_texts(feed_json=feed_json)
@@ -752,16 +755,16 @@ class AlpacaAlgoTradingImplementation:
             if rows:
                 return rows
 
-        print(
+        self._logger.info(
             "Could not find OHLCV rows in backend response keys: "
             f"{ticker_response_json.keys()}"
         )
 
-        print("graphData type:", type(ticker_response_json.get("graphData")))
-        print("graphData value:", ticker_response_json.get("graphData"))
+        self._logger.info("graphData type:", type(ticker_response_json.get("graphData")))
+        self._logger.info("graphData value:", ticker_response_json.get("graphData"))
 
-        print("momentumHistory type:", type(ticker_response_json.get("momentumHistory")))
-        print("momentumHistory value:", ticker_response_json.get("momentumHistory"))
+        self._logger.info("momentumHistory type:", type(ticker_response_json.get("momentumHistory")))
+        self._logger.info("momentumHistory value:", ticker_response_json.get("momentumHistory"))
 
         return []
 
