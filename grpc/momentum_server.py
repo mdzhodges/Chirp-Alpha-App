@@ -27,10 +27,11 @@ import torch
 import torch.nn.functional as F
 
 import grpc
-from Model.logger.logger import AppLogger
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+
+from Model.logger.logger import AppLogger
 
 import momentum_pb2
 import momentum_pb2_grpc

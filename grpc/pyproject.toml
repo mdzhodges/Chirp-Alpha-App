@@ -14,7 +14,9 @@ dependencies = [
     "transformers (>=5.7.0,<6.0.0)",
     "grpcio (>=1.80.0,<2.0.0)",
     "grpcio-tools (>=1.80.0,<2.0.0)",
-    "scikit-learn (>=1.8.0,<2.0.0)"
+    "scikit-learn (>=1.8.0,<2.0.0)",
+    "alpaca-py (>=0.30.0)",
+    "python-dotenv (>=1.0.0)"
 ]
 
 
