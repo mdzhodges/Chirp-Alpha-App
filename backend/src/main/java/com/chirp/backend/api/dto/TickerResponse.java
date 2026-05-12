@@ -48,7 +48,8 @@ public record TickerResponse(
 
   public record MomentumPoint(
       Instant timestamp,
-      BigDecimal value) {}
+      BigDecimal value,
+      BigDecimal baselinePrice) {}
 
   public record ModelStats(
       String modelType,

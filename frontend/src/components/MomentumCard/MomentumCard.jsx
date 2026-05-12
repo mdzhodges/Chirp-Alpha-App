@@ -3,7 +3,7 @@ import styles from './MomentumCard.module.css'
 export default function MomentumCard({ momentumNumber, momentumDirection, modelStats, isLoading }) {
   return (
     <div className={`${styles.momentumCard} ${isLoading ? styles.isLoading : ''}`}>
-      <div className={styles.momentumLabel}>Predicted Momentum Score</div>
+      <div className={styles.momentumLabel}>5-Day Predicted Momentum</div>
       <div
         className={`${styles.momentumValue} ${
           isLoading 

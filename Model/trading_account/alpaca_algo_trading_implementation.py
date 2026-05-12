@@ -189,7 +189,7 @@ class AlpacaAlgoTradingImplementation:
                     market_history=market_history_dict,
                     tweets=tweets_list,
                     model_type="ensemble",
-                    offset=0,
+                    offset=1,
                 )
 
                 response = self._stub.PredictMomentum(request, timeout=30)

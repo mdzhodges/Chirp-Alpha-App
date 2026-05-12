@@ -149,8 +149,8 @@ public class YahooFinanceTickerService {
             marketOhlcv.put(s, convertToOhlcv(node.path("chart").path("result").get(0)));
         });
 
-        // Current prediction with signals
-        MomentumGrpcClient.PredictionResult singlePred = momentumClient.predictMomentum(symbol, stockOhlcv, marketOhlcv, tweets, 0, modelType);
+        // Current prediction with signals - Use offset=1 (Previous Close) as baseline
+        MomentumGrpcClient.PredictionResult singlePred = momentumClient.predictMomentum(symbol, stockOhlcv, marketOhlcv, tweets, 1, modelType);
 
         // We want a trend for the last 30 trading days
         List<Integer> offsets = new ArrayList<>();
@@ -161,8 +161,10 @@ public class YahooFinanceTickerService {
         for (int i = 0; i < offsets.size() && i < preds.size(); i++) {
             int offset = offsets.get(i);
             if (offset < stockOhlcv.size()) {
-                Instant ts = Instant.parse(stockOhlcv.get(stockOhlcv.size() - 1 - offset).getDate());
-                historyPoints.add(new TickerResponse.MomentumPoint(ts, BigDecimal.valueOf(preds.get(i))));
+                momentum.OHLCV point = stockOhlcv.get(stockOhlcv.size() - 1 - offset);
+                Instant ts = Instant.parse(point.getDate());
+                BigDecimal baselinePrice = BigDecimal.valueOf(point.getClose());
+                historyPoints.add(new TickerResponse.MomentumPoint(ts, BigDecimal.valueOf(preds.get(i)), baselinePrice));
             }
         }
 
@@ -227,7 +229,7 @@ public class YahooFinanceTickerService {
     private JsonNode fetchChartDataWithRetry(String symbol) {
         return executeWithRetry(symbol, "chart", (s, isRetry) -> {
             String encodedSymbol = URLEncoder.encode(s, StandardCharsets.UTF_8);
-            String url = String.format("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=60m&range=7d&includePrePost=true&crumb=%s",
+            String url = String.format("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=60m&range=14d&includePrePost=true&crumb=%s",
                     encodedSymbol, authService.getCrumb());
             return buildRequest(url);
         });

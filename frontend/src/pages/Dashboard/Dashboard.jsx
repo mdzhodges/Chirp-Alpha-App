@@ -41,7 +41,7 @@ export default function Dashboard() {
   const [searchParams] = useSearchParams();
   const querySymbol = searchParams.get("s") || "AAPL";
   const [modelType, setModelType] = useState("balanced");
-  const [chartMode, setChartMode] = useState("candlestick"); // 'candlestick' or 'comparison'
+  const [chartMode, setChartMode] = useState("candlestick"); // 'candlestick', 'validation', or 'crystalBall'
 
   const { status, momentumStatus, error, ticker, history } = useTickerData(querySymbol, modelType);
 
@@ -230,12 +230,6 @@ export default function Dashboard() {
                   onClick={() => setChartMode("candlestick")}
                 >
                   Candles
-                </button>
-                <button
-                  className={`${styles.modelBtn} ${chartMode === "comparison" ? styles.modelBtnActive : ""}`}
-                  onClick={() => setChartMode("comparison")}
-                >
-                  Momentum
                 </button>
                 <button
                   className={`${styles.modelBtn} ${chartMode === "validation" ? styles.modelBtnActive : ""}`}
