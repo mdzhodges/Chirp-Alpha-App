@@ -117,7 +117,8 @@ class AlpacaAlgoTradingImplementation:
 
                 # self._initialize_portfolio_holdings(trading_client=trading_client, account_dict=account_dict)
 
-                model_predictions_dict: dict = self._get_model_predictions_dict()
+                model_predictions_dict: dict = self._get_model_predictions_dict(
+                    algorithmic_strategy_str=algorithmic_strategy_str)
 
                 self._execute_daily_momentum_policy(
                     trading_client=trading_client,
@@ -144,8 +145,7 @@ class AlpacaAlgoTradingImplementation:
             except Exception as e:
                 self._logger.error(f"Exception Thrown: {e}")
 
-
-    def _get_model_predictions_dict(self) -> dict[str, float]:
+    def _get_model_predictions_dict(self, algorithmic_strategy_str: str) -> dict[str, float]:
         """
         Calls the Java backend for stock history, market history, and tweets.
         Then sends that data into the Python gRPC momentum model.
@@ -165,15 +165,17 @@ class AlpacaAlgoTradingImplementation:
 
         model_predictions_dict: dict = {}
 
-        market_history_dict: dict = self._get_backend_market_history_proto_dict()
+        market_history_dict: dict = self._get_backend_market_history_proto_dict(
+            algorithmic_strategy_str=algorithmic_strategy_str)
 
         if not market_history_dict:
             self._logger.warning("No market history returned from backend.")
             return model_predictions_dict
 
-        for ticker in Constants.DATA_INGESTION_TICKER_SYMBOL_LIST:
+        for ticker in Constants.PORTFOLIO_TICKER_SYMBOL_LIST:
             try:
-                stock_history_list: list = self._get_backend_stock_history_proto_list(ticker=ticker)
+                stock_history_list: list = self._get_backend_stock_history_proto_list(ticker=ticker,
+                                                                                      algorithmic_strategy_str=algorithmic_strategy_str)
                 tweets_list: list[str] = self._get_backend_tweets_list(ticker=ticker)
 
                 if len(stock_history_list) < 60:
@@ -188,14 +190,14 @@ class AlpacaAlgoTradingImplementation:
                     stock_history=stock_history_list,
                     market_history=market_history_dict,
                     tweets=tweets_list,
-                    model_type="ensemble",
+                    model_type=algorithmic_strategy_str,
                     offset=1,
                 )
 
                 response = self._stub.PredictMomentum(request, timeout=30)
 
                 ticker_outputs: dict = {
-                    "ensemble": float(response.momentum),
+                    algorithmic_strategy_str: float(response.momentum),
                     "signals": list(response.signals),
                 }
 
@@ -226,13 +228,13 @@ class AlpacaAlgoTradingImplementation:
         Target lifecycle state:
             - 50% portfolio value remains cash
             - 50% portfolio value is invested
-            - invested portion is equally split across PORTFOLIO_TICKER_SYMBOL_LIST
+            - invested portion is equally split across DATA_INGESTION_TICKER_SYMBOL_LIST
 
         This does not rely on an in-memory flag, because this bot may run daily.
         Instead, it checks the real Alpaca account state.
         """
 
-        portfolio_tickers: list[str] = Constants.PORTFOLIO_TICKER_SYMBOL_LIST
+        portfolio_tickers: list[str] = Constants.DATA_INGESTION_TICKER_SYMBOL_LIST
 
         if not portfolio_tickers:
             self._logger.warning("No portfolio tickers configured. Skipping portfolio initialization.")
@@ -349,6 +351,7 @@ class AlpacaAlgoTradingImplementation:
         self._logger.info("=" * 100)
 
         for ticker_symbol_str in portfolio_tickers:
+
             model_output_dict: dict = model_predictions_dict.get(ticker_symbol_str, {})
 
             if not model_output_dict:
@@ -462,7 +465,7 @@ class AlpacaAlgoTradingImplementation:
             time_in_force=TimeInForce.DAY,
         )
 
-        trading_client.submit_order(order_data=market_order_request)
+        # trading_client.submit_order(order_data=market_order_request)
 
         self._logger.info(
             f"BUY {ticker_symbol_str}: ${buy_notional:,.2f}, "
@@ -529,7 +532,7 @@ class AlpacaAlgoTradingImplementation:
             time_in_force=TimeInForce.DAY,
         )
 
-        trading_client.submit_order(order_data=market_order_request)
+        # trading_client.submit_order(order_data=market_order_request)
 
         self._logger.info(
             f"SELL {ticker_symbol_str}: {quantity_to_sell:.6f} share(s), "
@@ -556,7 +559,7 @@ class AlpacaAlgoTradingImplementation:
 
         return float(model_output_dict.get("balanced", 0.0))
 
-    def _get_backend_market_history_proto_dict(self) -> dict:
+    def _get_backend_market_history_proto_dict(self, algorithmic_strategy_str: str) -> dict:
         """
         Calls the same backend ticker endpoint for each market ticker.
 
@@ -567,7 +570,8 @@ class AlpacaAlgoTradingImplementation:
         for market_ticker in Constants.DATA_INGESTION_TICKER_SYMBOL_LIST:
             try:
                 market_points: list = self._get_backend_stock_history_proto_list(
-                    ticker=market_ticker
+                    ticker=market_ticker,
+                    algorithmic_strategy_str=algorithmic_strategy_str
                 )
 
                 if len(market_points) < 60:
@@ -586,7 +590,7 @@ class AlpacaAlgoTradingImplementation:
 
         return market_history_dict
 
-    def _get_backend_stock_history_proto_list(self, ticker: str) -> list:
+    def _get_backend_stock_history_proto_list(self, ticker: str, algorithmic_strategy_str: str) -> list:
         """
         Calls:
 
@@ -596,10 +600,10 @@ class AlpacaAlgoTradingImplementation:
         """
 
         url: str = self._build_backend_url(
-            path="/api/ticker",
+            path=Constants.API_TICKER_STR,
             query_params={
                 "symbol": ticker,
-                "modelType": "balanced",
+                "modelType": algorithmic_strategy_str,
                 "skipMomentum": "true",
             },
         )
@@ -691,7 +695,7 @@ class AlpacaAlgoTradingImplementation:
         """
 
         safe_ticker: str = urllib.parse.quote(ticker)
-        url: str = f"{Constants.BACKEND_BASE_URL}/api/momentum/feed/{safe_ticker}"
+        url: str = f"{Constants.BACKEND_BASE_URL}{Constants.API_MOMENTUM_FEED_STR}{safe_ticker}"
 
         try:
             feed_json: Any = self._get_json_from_backend(url=url)
