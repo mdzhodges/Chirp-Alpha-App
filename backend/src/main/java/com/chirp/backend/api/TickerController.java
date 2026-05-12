@@ -28,14 +28,14 @@ public class TickerController {
   @GetMapping
   public TickerResponse fetchByQuery(
       @RequestParam("symbol") @NotBlank @Size(min = 1, max = 64) String symbol,
-      @RequestParam(value = "modelType", defaultValue = "balanced") String modelType,
+      @RequestParam(value = "modelType", defaultValue = "ensemble") String modelType,
       @RequestParam(value = "skipMomentum", defaultValue = "false") boolean skipMomentum) {
     return tickerService.fetch(symbol, modelType, skipMomentum);
   }
 
   @GetMapping("/{symbol}")
   public TickerResponse fetchByPath(@PathVariable("symbol") @NotBlank @Size(min = 1, max = 64) String symbol,
-      @RequestParam(value = "modelType", defaultValue = "balanced") String modelType,
+      @RequestParam(value = "modelType", defaultValue = "ensemble") String modelType,
       @RequestParam(value = "skipMomentum", defaultValue = "false") boolean skipMomentum) {
     return tickerService.fetch(symbol, modelType, skipMomentum);
   }

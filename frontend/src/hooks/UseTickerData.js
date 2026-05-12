@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-export function useTickerData(querySymbol, modelType = "balanced") {
+export function useTickerData(querySymbol, modelType = "ensemble") {
   const [status, setStatus] = useState('idle');
   const [momentumStatus, setMomentumStatus] = useState('idle');
   const [error, setError] = useState(null);

@@ -37,7 +37,7 @@ export default function Resources() {
 
       <div className={styles.portfolioGrid}>
         <PortfolioChart title="Bullish Strategy" data={data?.bullish} />
-        <PortfolioChart title="Balanced Strategy" data={data?.balanced} />
+        <PortfolioChart title="Ensemble Strategy" data={data?.ensemble} />
         <PortfolioChart title="Bearish Strategy" data={data?.bearish} />
       </div>
     </div>

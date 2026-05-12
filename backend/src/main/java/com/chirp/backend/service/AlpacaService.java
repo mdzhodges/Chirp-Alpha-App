@@ -21,10 +21,10 @@ public class AlpacaService {
     @Value("${alpaca.bullish.secret}")
     private String bullishSecret;
 
-    @Value("${alpaca.balanced.key}")
-    private String balancedKey;
-    @Value("${alpaca.balanced.secret}")
-    private String balancedSecret;
+    @Value("${alpaca.ensemble.key}")
+    private String ensembleKey;
+    @Value("${alpaca.ensemble.secret}")
+    private String ensembleSecret;
 
     @Value("${alpaca.bearish.key}")
     private String bearishKey;
@@ -41,7 +41,7 @@ public class AlpacaService {
     public AlpacaDashboardResponse getDashboardData() {
         return new AlpacaDashboardResponse(
             fetchAccountData("bullish", bullishKey, bullishSecret),
-            fetchAccountData("balanced", balancedKey, balancedSecret),
+            fetchAccountData("ensemble", ensembleKey, ensembleSecret),
             fetchAccountData("bearish", bearishKey, bearishSecret)
         );
     }

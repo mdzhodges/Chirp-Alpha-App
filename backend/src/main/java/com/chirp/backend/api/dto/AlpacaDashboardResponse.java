@@ -5,7 +5,7 @@ import java.util.List;
 
 public record AlpacaDashboardResponse(
     AlpacaAccountData bullish,
-    AlpacaAccountData balanced,
+    AlpacaAccountData ensemble,
     AlpacaAccountData bearish
 ) {
     public record AlpacaAccountData(
