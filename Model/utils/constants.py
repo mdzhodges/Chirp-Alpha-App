@@ -19,6 +19,8 @@ class Constants:
     ALPACA_BEARISH_API_KEY: str = "ALPACA_BEARISH_API_KEY"
     ALPACA_BEARISH_API_KEY_SECRET: str = "ALPACA_BEARISH_API_KEY_SECRET"
 
+    API_TICKER_STR:str = "/api/ticker"
+    API_MOMENTUM_FEED_STR:str = "/api/momentum/feed/"
     BACKEND_BASE_URL = "http://localhost:8080"
     ALPACA_ACCOUNT_URL: str = "https://paper-api.alpaca.markets/v2/account"
 
