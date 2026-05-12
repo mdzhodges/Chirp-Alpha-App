@@ -197,9 +197,9 @@ The following outlines the policy our trading implementation will follow:
 - This will eliminate the possibility of attempting to sell an equity we don't own
 - This will eliminate the possibility of our portfolio becoming too heavy weighted on a single equity
 
-3. In the event an equity has an upward momentum of > 5%, then 0.5% of the total portfolio for that equity will be **purchased** (as long as the maximum holding percentage is not exceeded) 
+3. In the event an equity has an upward momentum of > 2.5%, then 0.5% of the total portfolio for that equity will be **purchased** (as long as the maximum holding percentage is not exceeded) 
 
-4. In the event an equity has a downward momentum of > 5%, then 0.5% of that equity will be **sold** (as long as the minimum holding percentage is not passed)
+4. In the event an equity has a downward momentum of > 2.5%, then 0.5% of that equity will be **sold** (as long as the minimum holding percentage is not passed)
 
 5. This process will be repeated daily
 
