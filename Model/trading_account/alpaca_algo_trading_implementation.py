@@ -697,6 +697,8 @@ class AlpacaAlgoTradingImplementation:
         safe_ticker: str = urllib.parse.quote(ticker)
         url: str = f"{Constants.BACKEND_BASE_URL}{Constants.API_MOMENTUM_FEED_STR}{safe_ticker}"
 
+        self._logger.info(f"Querying URL: {url}")
+
         try:
             feed_json: Any = self._get_json_from_backend(url=url)
         except Exception as e:
@@ -709,7 +711,11 @@ class AlpacaAlgoTradingImplementation:
         base_url: str = Constants.BACKEND_BASE_URL.rstrip("/")
         encoded_query: str = urllib.parse.urlencode(query_params)
 
-        return f"{base_url}{path}?{encoded_query}"
+        result_url:str = f"{base_url}{path}?{encoded_query}"
+
+        self._logger.info(f"Querying URL: {result_url}")
+
+        return result_url
 
     def _get_json_from_backend(self, url: str) -> Any:
         with urllib.request.urlopen(url, timeout=30) as response:
