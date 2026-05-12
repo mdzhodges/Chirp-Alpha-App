@@ -16,6 +16,7 @@ import StockTwitsFeed from "../../components/StockTwitsFeed/StockTwitsFeed";
 import TickerCard from "../../components/TickerCard/TickerCard";
 import MomentumCard from "../../components/MomentumCard/MomentumCard";
 import PriceChart from "../../components/PriceChart/PriceChart";
+import AlphaVisionChart from "../../components/AlphaVisionChart/AlphaVisionChart";
 
 import styles from "./Dashboard.module.css";
 
@@ -201,12 +202,21 @@ export default function Dashboard() {
           )}
           <div className={styles.card}>
             {history ? (
-              <PriceChart 
-                key={`${chartMode}-${querySymbol}-${modelType}`} 
-                history={history} 
-                ticker={ticker} 
-                mode={chartMode}
-              />
+              chartMode === "validation" || chartMode === "crystalBall" ? (
+                <AlphaVisionChart 
+                  key={`${chartMode}-${querySymbol}-${modelType}`}
+                  history={history} 
+                  ticker={ticker} 
+                  mode={chartMode} 
+                />
+              ) : (
+                <PriceChart 
+                  key={`${chartMode}-${querySymbol}-${modelType}`} 
+                  history={history} 
+                  ticker={ticker} 
+                  mode={chartMode}
+                />
+              )
             ) : (
               <div className={styles.loadingState}>
                 {status === "loading" ? "Analyzing Market Cycles..." : "Search for a ticker to begin"}
@@ -226,6 +236,18 @@ export default function Dashboard() {
                   onClick={() => setChartMode("comparison")}
                 >
                   Momentum
+                </button>
+                <button
+                  className={`${styles.modelBtn} ${chartMode === "validation" ? styles.modelBtnActive : ""}`}
+                  onClick={() => setChartMode("validation")}
+                >
+                  Validation View
+                </button>
+                <button
+                  className={`${styles.modelBtn} ${chartMode === "crystalBall" ? styles.modelBtnActive : ""}`}
+                  onClick={() => setChartMode("crystalBall")}
+                >
+                  Crystal Ball
                 </button>
               </div>
             </div>
