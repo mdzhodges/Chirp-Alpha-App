@@ -61,7 +61,7 @@ def get_data_date_range():
 
 
 def print_data_info():
-    data = _get_data()
+    data = _get_data() 
     first, last = get_data_date_range()
     tickers = data['ticker'].unique() if 'ticker' in data.columns else []
 
