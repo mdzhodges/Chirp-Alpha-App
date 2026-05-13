@@ -653,7 +653,6 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
 
             # Extract sentiment stats from text_feat
             s_feats = text_feat.view(-1, 5)[0].tolist()
-            signals.append(f"DEBUG_SENTIMENT: Count={s_feats[3]}, Bull={s_feats[0]:.4f}, Bear={s_feats[1]:.4f}, NEU={s_feats[2]:.4f}")
 
             # Calculate the primary prediction
             model_id = request.model_type or "ensemble"
