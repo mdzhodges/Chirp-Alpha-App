@@ -171,7 +171,7 @@ class AlpacaAlgoTradingImplementation:
             self._logger.warning("No market history returned from backend.")
             return model_predictions_dict
 
-        for ticker in Constants.DATA_INGESTION_TICKER_SYMBOL_LIST:
+        for ticker in Constants.PORTFOLIO_TICKER_SYMBOL_LIST:
             try:
                 stock_history_list: list = self._get_backend_stock_history_proto_list(ticker=ticker)
                 tweets_list: list[str] = self._get_backend_tweets_list(ticker=ticker)
@@ -201,7 +201,7 @@ class AlpacaAlgoTradingImplementation:
 
                 for model_name, model_value in response.model_outputs.items():
                     ticker_outputs[model_name] = float(model_value)
-
+                
                 ticker_outputs.setdefault("balanced", 0.0)
                 ticker_outputs.setdefault("bullish", 0.0)
                 ticker_outputs.setdefault("bearish", 0.0)
@@ -285,9 +285,9 @@ class AlpacaAlgoTradingImplementation:
                     time_in_force=TimeInForce.DAY,
                 )
 
-                market_order: Order = trading_client.submit_order(
-                    order_data=market_order_request
-                )
+                # market_order: Order = trading_client.submit_order(
+                #     order_data=market_order_request
+                # )
 
                 self._logger.info(
                     f"Submitted BUY order for approximately "
@@ -462,7 +462,7 @@ class AlpacaAlgoTradingImplementation:
             time_in_force=TimeInForce.DAY,
         )
 
-        trading_client.submit_order(order_data=market_order_request)
+        # trading_client.submit_order(order_data=market_order_request)
 
         self._logger.info(
             f"BUY {ticker_symbol_str}: ${buy_notional:,.2f}, "
@@ -529,7 +529,7 @@ class AlpacaAlgoTradingImplementation:
             time_in_force=TimeInForce.DAY,
         )
 
-        trading_client.submit_order(order_data=market_order_request)
+        # trading_client.submit_order(order_data=market_order_request)
 
         self._logger.info(
             f"SELL {ticker_symbol_str}: {quantity_to_sell:.6f} share(s), "
@@ -564,7 +564,7 @@ class AlpacaAlgoTradingImplementation:
 
         market_history_dict: dict = {}
 
-        for market_ticker in Constants.DATA_INGESTION_TICKER_SYMBOL_LIST:
+        for market_ticker in Constants.TICKER_SYMBOL_BROAD_MARKET_INDEXES:
             try:
                 market_points: list = self._get_backend_stock_history_proto_list(
                     ticker=market_ticker
@@ -590,7 +590,7 @@ class AlpacaAlgoTradingImplementation:
         """
         Calls:
 
-            GET /api/ticker?symbol={ticker}&modelType=balanced&skipMomentum=true
+            GET /api/ticker?symbol={ticker}&modelType=balanced&skipMomentum=true&interval=1d&range=120d
 
         Then extracts OHLCV rows from the backend TickerResponse.
         """
@@ -601,6 +601,8 @@ class AlpacaAlgoTradingImplementation:
                 "symbol": ticker,
                 "modelType": "balanced",
                 "skipMomentum": "true",
+                "interval": "1d",
+                "range": "120d",
             },
         )
 
@@ -836,12 +838,20 @@ class AlpacaAlgoTradingImplementation:
                 text = message.strip()
 
             elif isinstance(message, dict):
-                text = str(
-                    message.get("body")
-                    or message.get("text")
-                    or message.get("message")
-                    or ""
-                ).strip()
+                user = message.get("user") or {}
+                followers = user.get("followers") or 0
+                is_official = user.get("official") or False
+
+                # Filter for high-quality accounts (Min 500 followers or Official)
+                if followers >= 500 or is_official:
+                    text = str(
+                        message.get("body")
+                        or message.get("text")
+                        or message.get("message")
+                        or ""
+                    ).strip()
+                else:
+                    text = ""
 
             else:
                 text = ""

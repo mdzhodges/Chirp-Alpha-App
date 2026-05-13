@@ -57,20 +57,20 @@ public class YahooFinanceTickerService {
         this.cacheService = cacheService;
     }
 
-    public TickerResponse fetch(String symbol, String modelType, boolean skipMomentum) {
-        log.debug("Fetching ticker data for: {} (skipMomentum={})", symbol, skipMomentum);
+    public TickerResponse fetch(String symbol, String modelType, boolean skipMomentum, String interval, String range) {
+        log.debug("Fetching ticker data for: {} (skipMomentum={}, interval={}, range={})", symbol, skipMomentum, interval, range);
 
         String normalizedSymbol = normalizeSymbol(symbol);
         String normalizedModelType = normalizeModelType(modelType);
-        String cacheKey = "ticker:snapshot:" + normalizedSymbol + ":" + normalizedModelType + ":skipMomentum:" + skipMomentum;
+        String cacheKey = "ticker:snapshot:" + normalizedSymbol + ":" + normalizedModelType + ":skipMomentum:" + skipMomentum + ":int:" + interval + ":rng:" + range;
 
         Duration ttl = skipMomentum ? tickerTtl : momentumTtl;
         return cacheService.getOrCompute(cacheKey, TickerResponse.class, ttl,
-                () -> computeTickerResponse(normalizedSymbol, normalizedModelType, skipMomentum));
+                () -> computeTickerResponse(normalizedSymbol, normalizedModelType, skipMomentum, interval, range));
     }
 
-    private TickerResponse computeTickerResponse(String symbol, String modelType, boolean skipMomentum) {
-        JsonNode chartRoot = fetchChartDataWithRetry(symbol);
+    private TickerResponse computeTickerResponse(String symbol, String modelType, boolean skipMomentum, String interval, String range) {
+        JsonNode chartRoot = fetchChartDataWithRetry(symbol, interval, range);
         JsonNode result = chartRoot.path("chart").path("result").get(0);
         if (result == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Symbol not found: " + symbol);
@@ -169,7 +169,11 @@ public class YahooFinanceTickerService {
         }
 
         BigDecimal current = singlePred != null ? BigDecimal.valueOf(singlePred.momentum()) : (preds.isEmpty() ? BigDecimal.ZERO : BigDecimal.valueOf(preds.get(0)));
-        List<String> signals = singlePred != null ? singlePred.signals() : new ArrayList<>();
+        List<String> signals = new ArrayList<>();
+        if (singlePred != null) {
+            // Create a mutable copy of the list from gRPC
+            signals.addAll(new ArrayList<>(singlePred.signals()));
+        }
         return new MomentumData(current, historyPoints, signals);
     }
 
@@ -226,11 +230,14 @@ public class YahooFinanceTickerService {
         return points;
     }
 
-    private JsonNode fetchChartDataWithRetry(String symbol) {
+    private JsonNode fetchChartDataWithRetry(String symbol, String interval, String range) {
         return executeWithRetry(symbol, "chart", (s, isRetry) -> {
             String encodedSymbol = URLEncoder.encode(s, StandardCharsets.UTF_8);
-            String url = String.format("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=60m&range=14d&includePrePost=true&crumb=%s",
-                    encodedSymbol, authService.getCrumb());
+            String targetInterval = (interval != null && !interval.isBlank()) ? interval : "60m";
+            String targetRange = (range != null && !range.isBlank()) ? range : "14d";
+            
+            String url = String.format("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=%s&range=%s&includePrePost=true&crumb=%s",
+                    encodedSymbol, targetInterval, targetRange, authService.getCrumb());
             return buildRequest(url);
         });
     }
@@ -307,6 +314,9 @@ public class YahooFinanceTickerService {
         List<GraphPoint> points = new ArrayList<>();
         JsonNode timestamps = result.path("timestamp");
         JsonNode quote = result.path("indicators").path("quote").get(0);
+        JsonNode adjCloseNode = result.path("indicators").path("adjclose");
+        JsonNode adjCloses = (adjCloseNode != null && adjCloseNode.isArray() && !adjCloseNode.isEmpty()) ? adjCloseNode.get(0).path("adjclose") : null;
+
         JsonNode opens = quote.path("open");
         JsonNode highs = quote.path("high");
         JsonNode lows = quote.path("low");
@@ -322,7 +332,8 @@ public class YahooFinanceTickerService {
                             asBigDecimal(opens.get(i)),
                             asBigDecimal(highs.get(i)),
                             asBigDecimal(lows.get(i)),
-                            closeNode.decimalValue()
+                            closeNode.decimalValue(),
+                            (adjCloses != null && adjCloses.has(i) && !adjCloses.get(i).isNull()) ? adjCloses.get(i).decimalValue() : closeNode.decimalValue()
                     ));
                 }
             }

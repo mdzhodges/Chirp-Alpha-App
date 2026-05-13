@@ -44,7 +44,8 @@ public record TickerResponse(
       BigDecimal open,
       BigDecimal high,
       BigDecimal low,
-      BigDecimal close) {}
+      BigDecimal close,
+      BigDecimal adjClose) {}
 
   public record MomentumPoint(
       Instant timestamp,

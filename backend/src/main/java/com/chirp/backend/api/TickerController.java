@@ -29,20 +29,24 @@ public class TickerController {
   public TickerResponse fetchByQuery(
       @RequestParam("symbol") @NotBlank @Size(min = 1, max = 64) String symbol,
       @RequestParam(value = "modelType", defaultValue = "ensemble") String modelType,
-      @RequestParam(value = "skipMomentum", defaultValue = "false") boolean skipMomentum) {
-    return tickerService.fetch(symbol, modelType, skipMomentum);
+      @RequestParam(value = "skipMomentum", defaultValue = "false") boolean skipMomentum,
+      @RequestParam(value = "interval", required = false) String interval,
+      @RequestParam(value = "range", required = false) String range) {
+    return tickerService.fetch(symbol, modelType, skipMomentum, interval, range);
   }
 
   @GetMapping("/{symbol}")
   public TickerResponse fetchByPath(@PathVariable("symbol") @NotBlank @Size(min = 1, max = 64) String symbol,
       @RequestParam(value = "modelType", defaultValue = "ensemble") String modelType,
-      @RequestParam(value = "skipMomentum", defaultValue = "false") boolean skipMomentum) {
-    return tickerService.fetch(symbol, modelType, skipMomentum);
+      @RequestParam(value = "skipMomentum", defaultValue = "false") boolean skipMomentum,
+      @RequestParam(value = "interval", required = false) String interval,
+      @RequestParam(value = "range", required = false) String range) {
+    return tickerService.fetch(symbol, modelType, skipMomentum, interval, range);
   }
 
   @PostMapping
   public TickerResponse fetchByBody(@Valid @RequestBody TickerRequest request) {
-    return tickerService.fetch(request.symbol(), request.modelType(), false);
+    return tickerService.fetch(request.symbol(), request.modelType(), false, null, null);
   }
 
   @GetMapping("/momentum")

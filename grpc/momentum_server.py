@@ -170,12 +170,8 @@ def _load_sentiment_classifier(model_name: str, device: torch.device):
 
     model.eval().to(device)
 
-    # need to qunatize this model to make it more efficeient of the grpc server when deployed
-    # perhaps also switch to torch.serve instead of loading the model into memory, could reduce memory footprint
-    # we HAVE to use a redis cache for commonly fetch tickers, would help alot for speed
-    # some other things we could do for quick fetch is just absoulutely BEEF up the ec2 instace, could also experiement with using different ec2 grpcs for each model, would be a messy af set up
-    # could also do concurrent models, that would require alot more cpu power tho
     cfg = getattr(model.config, "id2label", None) or {}
+    print(f"DEBUG: Sentiment model {model_name} id2label: {cfg}")
     label_map: dict[int, str] = {}
     for idx, name in cfg.items():
         idx = int(idx)
@@ -194,15 +190,19 @@ def _load_sentiment_classifier(model_name: str, device: torch.device):
             label_map = {0: "neutral", 1: "bullish", 2: "bearish"}
         elif "prosus" in model_name.lower():
             label_map = {0: "bullish", 1: "bearish", 2: "neutral"}
+    
+    print(f"DEBUG: Resolved label_map: {label_map}")
 
     canonical_col_for: dict[int, int] = {}
     for idx, lbl in label_map.items():
         col = {"bullish": 0, "bearish": 1, "neutral": 2}.get(lbl)
         if col is not None:
             canonical_col_for[idx] = col
+    
+    print(f"DEBUG: canonical_col_for: {canonical_col_for}")
 
     if len(canonical_col_for) != 3:
-        raise RuntimeError(f"Could not resolve all 3 sentiment classes for {model_name}.")
+        raise RuntimeError(f"Could not resolve all 3 sentiment classes for {model_name}. Map: {canonical_col_for}")
 
     return tokenizer, model, canonical_col_for
 
@@ -218,12 +218,13 @@ def _texts_to_sentiment_features(
         max_length: int = 128,
         batch_size: int = 64,
 ) -> Optional[torch.Tensor]:
-    """Returns a (1, 5) CPU tensor: [mean_bull, mean_bear, mean_neu, count, std_bull].
-    Returns None if no usable text was provided so the caller can fall back
-    to the learned no_tweet_embedding."""
+    """Returns a (1, 5) CPU tensor: [mean_bull, mean_bear, mean_neu, count, std_bull]."""
     cleaned = [t.strip() for t in texts if isinstance(t, str) and t.strip()]
     if not cleaned:
         return None
+
+    # Log mapping once
+    print(f"DEBUG: Sentiment Mapping - {canonical_col_for}")
 
     all_probs: list[torch.Tensor] = []
     for i in range(0, len(cleaned), batch_size):
@@ -237,6 +238,13 @@ def _texts_to_sentiment_features(
         ).to(device)
         out = model(**inputs)
         probs = F.softmax(out.logits.float(), dim=-1).cpu()
+        
+        # Log raw probs for the first few tweets of the first batch
+        if i == 0:
+            for idx, text in enumerate(chunk[:3]):
+                print(f"DEBUG Tweet {idx}: '{text[:50]}...'")
+                print(f"  Raw Probs: {probs[idx].tolist()}")
+
         canonical = torch.zeros_like(probs)
         for idx, col in canonical_col_for.items():
             canonical[:, col] = probs[:, idx]
@@ -248,6 +256,8 @@ def _texts_to_sentiment_features(
     mean_bear = p[:, 1].mean().item()
     mean_neu = p[:, 2].mean().item()
     std_bull = p[:, 0].std(unbiased=False).item() if n > 1 else 0.0
+    
+    print(f"DEBUG Final Sentiment Vector: Bull={mean_bull:.4f}, Bear={mean_bear:.4f}, Neu={mean_neu:.4f}, Count={n}")
 
     return torch.tensor(
         [[mean_bull, mean_bear, mean_neu, float(n), std_bull]],
@@ -396,7 +406,15 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
         stock_df = pd.DataFrame(rows)
         stock_df["Date"] = pd.to_datetime(stock_df["Date"], errors="coerce")
         stock_df = stock_df.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
-        return _create_stock_features(stock_df, ticker)
+        
+        # Create features, which drops the 'Close' column
+        features_df = _create_stock_features(stock_df.copy(), ticker)
+        
+        # Re-join 'Close' so it's available for debug signals later
+        if not features_df.empty:
+            features_df = features_df.merge(stock_df[['Date', 'Close']], on='Date', how='left')
+            
+        return features_df
 
     def _build_market_features(self, market_history) -> pd.DataFrame:
         market_parts: list[pd.DataFrame] = []
@@ -499,18 +517,35 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
     # Single forward pass
     # -----------------------------------------------------------------------
 
-    def _predict_single_model(self, model_id, stock_feats, market_feats, offset, text_feat):
+    def _predict_single_model(self, model_id, combined_feats, offset, text_feat):
         m = self.models.get(model_id)
         if not m:
             return None
 
-        s_row = self._slice_one_row(stock_feats, offset, m["stock_cols"], kind="stock")
-        m_row = self._slice_one_row(market_feats, offset, m["spy_cols"], kind="market")
-        if s_row is None or m_row is None:
+        # Slice one row from the combined dataframe
+        idx = -1 - offset
+        if abs(idx) > len(combined_feats):
             return None
+        
+        row_df = combined_feats.iloc[idx: idx + 1] if idx != -1 else combined_feats.iloc[-1:]
+        prediction_date = row_df["Date"].iloc[0]
+        self._logger.info(f"Model {model_id} using data for Date: {prediction_date} (offset: {offset})")
 
+        # Validate and scale stock features
+        missing_stock = [c for c in m["stock_cols"] if c not in row_df.columns]
+        if missing_stock:
+            raise RuntimeError(f"Stock feature mismatch for {model_id}: missing {len(missing_stock)} columns.")
+        
+        s_row = row_df[m["stock_cols"]].replace([np.inf, -np.inf], np.nan).fillna(0.0)
         s_tensor = self._scale(s_row, m["stock_scaler"], pca_model=m["pca_stock"])
-        i_tensor = self._scale(m_row, m["spy_scaler"], pca_model=m["pca_spy"])
+
+        # Validate and scale spy features
+        missing_spy = [c for c in m["spy_cols"] if c not in row_df.columns]
+        if missing_spy:
+            raise RuntimeError(f"SPY feature mismatch for {model_id}: missing {len(missing_spy)} columns.")
+
+        i_row = row_df[m["spy_cols"]].replace([np.inf, -np.inf], np.nan).fillna(0.0)
+        i_tensor = self._scale(i_row, m["spy_scaler"], pca_model=m["pca_spy"])
 
         with torch.no_grad():
             s_feat = m["stock_network"](s_tensor)
@@ -530,12 +565,12 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
 
         return float(unstandardized_val)
 
-    def _predict_at_offset(self, model_id, stock_feats, market_feats, offset, text_feat):
+    def _predict_at_offset(self, model_id, combined_feats, offset, text_feat):
         if model_id == "ensemble":
             weighted_sum = 0.0
             total_weight = 0.0
             for m_id in self.models.keys():
-                p = self._predict_single_model(m_id, stock_feats, market_feats, offset, text_feat)
+                p = self._predict_single_model(m_id, combined_feats, offset, text_feat)
                 if p is not None:
                     # Determine weight based on prediction direction and model accuracy
                     stats = self.model_stats.get(m_id, {"up": 0.5, "down": 0.5})
@@ -548,10 +583,10 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
                 return 0.0
             return weighted_sum / total_weight
 
-        pred = self._predict_single_model(model_id, stock_feats, market_feats, offset, text_feat)
+        pred = self._predict_single_model(model_id, combined_feats, offset, text_feat)
         if pred is None and model_id != "balanced":
             # Fallback to balanced if requested model fails
-            pred = self._predict_single_model("balanced", stock_feats, market_feats, offset, text_feat)
+            pred = self._predict_single_model("balanced", combined_feats, offset, text_feat)
 
         return pred
 
@@ -561,29 +596,67 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
 
     def PredictMomentum(self, request, context):
         try:
-
-            self._logger.info(request.ticker)
-            model_id = request.model_type or "ensemble"
+            self._logger.info("=" * 100)
+            self._logger.info(f"PredictMomentum REQUEST: ticker={request.ticker}, model={request.model_type}, offset={request.offset}")
+            self._logger.info(f"Input Data: stock_rows={len(request.stock_history)}, market_tickers={list(request.market_history.keys())}, tweets={len(request.tweets)}")
 
             stock_feats = self._build_stock_features(request.stock_history, request.ticker)
             if stock_feats.empty:
+                self._logger.warning(f"Stock features empty for {request.ticker}")
                 return momentum_pb2.MomentumResponse(momentum=0.0)
 
             market_feats = self._build_market_features(request.market_history)
             if market_feats.empty:
+                self._logger.warning(f"Market features empty for {request.ticker}")
                 return momentum_pb2.MomentumResponse(momentum=0.0)
 
+            # Align features by Date
+            combined_feats = pd.merge(stock_feats, market_feats, on="Date", how="inner")
+            
+            self._logger.info(f"DATA DIAGNOSTIC: stock_rows={len(stock_feats)}, market_rows={len(market_feats)}, merged_rows={len(combined_feats)}")
+            if not combined_feats.empty:
+                self._logger.info(f"DATE RANGE: start={combined_feats['Date'].min()}, end={combined_feats['Date'].max()}")
+            
+            if combined_feats.empty:
+                self._logger.warning(f"No overlapping dates for {request.ticker} and market indices.")
+                self._logger.info(f"Stock Range: {stock_feats['Date'].min()} to {stock_feats['Date'].max()}")
+                self._logger.info(f"Market Range: {market_feats['Date'].min()} to {market_feats['Date'].max()}")
+                return momentum_pb2.MomentumResponse(momentum=0.0)
+            
+            combined_feats = combined_feats.sort_values("Date").reset_index(drop=True)
+            
             offset = request.offset
+            idx = -1 - offset
+            if abs(idx) <= len(combined_feats):
+                pred_row = combined_feats.iloc[idx]
+                self._logger.info(f"Prediction Target Row: Date={pred_row['Date']}, Price={pred_row.get('Close', 'N/A')}")
+            else:
+                self._logger.warning(f"Offset {offset} (idx {idx}) out of bounds for merged data size {len(combined_feats)}")
             text_feat = self._text_feature(request.tweets)
 
             # Calculate individual predictions for signal detection
             model_preds = {}
             for m_id in self.models.keys():
-                p = self._predict_single_model(m_id, stock_feats, market_feats, offset, text_feat)
+                p = self._predict_single_model(m_id, combined_feats, offset, text_feat)
                 if p is not None:
                     model_preds[m_id] = p
+            
+            self._logger.info(f"Individual model predictions: {model_preds}")
 
-            # Calculate the primary prediction (weighted if ensemble)
+            # --- Flash Signal Detection ---
+            signals = []
+            
+            # Leak metadata for debugging
+            if abs(idx) <= len(combined_feats):
+                p_date = pred_row["Date"]
+                p_close = pred_row.get("Close", 0.0)
+
+            # Extract sentiment stats from text_feat
+            s_feats = text_feat.view(-1, 5)[0].tolist()
+            signals.append(f"DEBUG_SENTIMENT: Count={s_feats[3]}, Bull={s_feats[0]:.4f}, Bear={s_feats[1]:.4f}, NEU={s_feats[2]:.4f}")
+
+            # Calculate the primary prediction
+            model_id = request.model_type or "ensemble"
             if model_id == "ensemble":
                 weighted_sum = 0.0
                 total_weight = 0.0
@@ -596,8 +669,8 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
             else:
                 pred = model_preds.get(model_id, 0.0)
 
-            # --- Flash Signal Detection ---
-            signals = []
+            self._logger.info(f"FINAL PREDICTION ({model_id}): {pred:.4f}")
+            self._logger.info("=" * 100)
 
             bearish_p = model_preds.get("bearish")
             bullish_p = model_preds.get("bullish")
@@ -634,12 +707,19 @@ class MomentumService(momentum_pb2_grpc.MomentumServiceServicer):
             if market_feats.empty:
                 return momentum_pb2.BatchMomentumResponse(momentums=[0.0] * len(request.offsets))
 
+            # Align features by Date
+            combined_feats = pd.merge(stock_feats, market_feats, on="Date", how="inner")
+            if combined_feats.empty:
+                return momentum_pb2.BatchMomentumResponse(momentums=[0.0] * len(request.offsets))
+            
+            combined_feats = combined_feats.sort_values("Date").reset_index(drop=True)
+
             text_feat = self._text_feature(request.tweets)
 
             results: list[float] = []
             for offset in request.offsets:
                 off = max(0, offset)
-                pred = self._predict_at_offset(model_id, stock_feats, market_feats, off, text_feat)
+                pred = self._predict_at_offset(model_id, combined_feats, off, text_feat)
                 results.append(pred if pred is not None else 0.0)
 
             return momentum_pb2.BatchMomentumResponse(momentums=results)
