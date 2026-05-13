@@ -267,7 +267,7 @@ class AlpacaAlgoTradingImplementation:
             )
             return
 
-        dollars_per_ticker: float = cash_to_invest / len(portfolio_tickers)
+        dollars_per_ticker: float = round(cash_to_invest / len(portfolio_tickers), 2)
 
         self._logger.info("Initializing Portfolio Holdings:")
         self._logger.info(f"Portfolio Value: ${portfolio_value:,.2f}")
@@ -713,7 +713,7 @@ class AlpacaAlgoTradingImplementation:
         base_url: str = Constants.BACKEND_BASE_URL.rstrip("/")
         encoded_query: str = urllib.parse.urlencode(query_params)
 
-        result_url:str = f"{base_url}{path}?{encoded_query}"
+        result_url: str = f"{base_url}{path}?{encoded_query}"
 
         self._logger.info(f"Querying URL: {result_url}")
 
