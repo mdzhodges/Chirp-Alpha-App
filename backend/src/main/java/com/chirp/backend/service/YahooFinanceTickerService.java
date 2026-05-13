@@ -33,7 +33,7 @@ public class YahooFinanceTickerService {
     private final ObjectMapper objectMapper;
     private final YahooAuthService authService;
     private final MomentumGrpcClient momentumClient;
-    private final StockTwitsService stockTwitsService;
+    private final FinnhubNewsService finnhubNewsService;
     private final RedisCacheService cacheService;
 
     @Value("${LOGO_DEV_API_KEY:}")
@@ -47,13 +47,13 @@ public class YahooFinanceTickerService {
 
     @org.springframework.beans.factory.annotation.Autowired
     public YahooFinanceTickerService(ObjectMapper objectMapper, YahooAuthService authService, 
-                                    MomentumGrpcClient momentumClient, StockTwitsService stockTwitsService,
+                                    MomentumGrpcClient momentumClient, FinnhubNewsService finnhubNewsService,
                                     RedisCacheService cacheService) {
         this.httpClient = authService.getHttpClient();
         this.objectMapper = objectMapper;
         this.authService = authService;
         this.momentumClient = momentumClient;
-        this.stockTwitsService = stockTwitsService;
+        this.finnhubNewsService = finnhubNewsService;
         this.cacheService = cacheService;
     }
 
@@ -118,29 +118,23 @@ public class YahooFinanceTickerService {
             marketHistory.put(m, fetchDailyChartData(m, "120d"));
         }
 
-        // Fetch tweets and filter for data leakage
-        String tweetsJson = stockTwitsService.getFeedForTicker(symbol);
-        List<String> tweets = new ArrayList<>();
-        // Current momentum is predicted from 5 days ago
-        Instant cutoff = Instant.now().minus(java.time.Duration.ofDays(5));
+        // Fetch news and use headlines/summaries as signals
+        String newsJson = finnhubNewsService.getNewsForTicker(symbol);
+        List<String> newsSignals = new ArrayList<>();
         
         try {
-            JsonNode tweetsRoot = objectMapper.readTree(tweetsJson);
-            JsonNode messages = tweetsRoot.path("messages");
-            if (messages.isArray()) {
-                for (JsonNode msg : messages) {
-                    JsonNode user = msg.path("user");
-                    int followers = user.path("followers").asInt(0);
-                    boolean isOfficial = user.path("official").asBoolean(false);
-
-                    // Filter for high-quality accounts (Min 1000 followers or Official)
-                    if (followers >= 500 || isOfficial) {
-                        tweets.add(msg.path("body").asText());
+            JsonNode newsArray = objectMapper.readTree(newsJson);
+            if (newsArray.isArray()) {
+                for (JsonNode item : newsArray) {
+                    String headline = item.path("headline").asText("");
+                    String summary = item.path("summary").asText("");
+                    if (!headline.isBlank()) {
+                        newsSignals.add(headline + ". " + summary);
                     }
                 }
             }
         } catch (IOException e) {
-            log.warn("Failed to parse tweets for momentum: {}", e.getMessage());
+            log.warn("Failed to parse news for momentum: {}", e.getMessage());
         }
 
         List<momentum.OHLCV> stockOhlcv = convertToOhlcv(stockHistory.path("chart").path("result").get(0));
@@ -150,12 +144,12 @@ public class YahooFinanceTickerService {
         });
 
         // Current prediction with signals - Use offset=1 (Previous Close) as baseline
-        MomentumGrpcClient.PredictionResult singlePred = momentumClient.predictMomentum(symbol, stockOhlcv, marketOhlcv, tweets, 1, modelType);
+        MomentumGrpcClient.PredictionResult singlePred = momentumClient.predictMomentum(symbol, stockOhlcv, marketOhlcv, newsSignals, 1, modelType);
 
         // We want a trend for the last 30 trading days
         List<Integer> offsets = new ArrayList<>();
         for (int i = 0; i <= 30; i++) offsets.add(i);
-        List<Float> preds = momentumClient.batchPredictMomentum(symbol, stockOhlcv, marketOhlcv, tweets, offsets, modelType);
+        List<Float> preds = momentumClient.batchPredictMomentum(symbol, stockOhlcv, marketOhlcv, newsSignals, offsets, modelType);
 
         List<TickerResponse.MomentumPoint> historyPoints = new ArrayList<>();
         for (int i = 0; i < offsets.size() && i < preds.size(); i++) {

@@ -60,6 +60,29 @@
   color: var(--text-muted);
 }
 
+.newsContent {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.headline {
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.headline a {
+  color: var(--text-main);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.headline a:hover {
+  color: var(--accent-green);
+}
+
 .messageBody {
   color: var(--text-muted);
   font-family: var(--font-body);

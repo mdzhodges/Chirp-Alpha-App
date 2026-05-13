@@ -838,20 +838,28 @@ class AlpacaAlgoTradingImplementation:
                 text = message.strip()
 
             elif isinstance(message, dict):
-                user = message.get("user") or {}
-                followers = user.get("followers") or 0
-                is_official = user.get("official") or False
-
-                # Filter for high-quality accounts (Min 500 followers or Official)
-                if followers >= 500 or is_official:
-                    text = str(
-                        message.get("body")
-                        or message.get("text")
-                        or message.get("message")
-                        or ""
-                    ).strip()
+                # Check for Finnhub News format
+                headline = message.get("headline")
+                summary = message.get("summary")
+                
+                if headline:
+                    text = f"{headline}. {summary}".strip()
                 else:
-                    text = ""
+                    # StockTwits format
+                    user = message.get("user") or {}
+                    followers = user.get("followers") or 0
+                    is_official = user.get("official") or False
+
+                    # Filter for high-quality accounts (Min 500 followers or Official)
+                    if followers >= 500 or is_official:
+                        text = str(
+                            message.get("body")
+                            or message.get("text")
+                            or message.get("message")
+                            or ""
+                        ).strip()
+                    else:
+                        text = ""
 
             else:
                 text = ""

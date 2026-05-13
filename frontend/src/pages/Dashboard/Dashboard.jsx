@@ -12,7 +12,7 @@ import {
 } from "chart.js";
 
 import { useTickerData } from "../../hooks/UseTickerData";
-import StockTwitsFeed from "../../components/StockTwitsFeed/StockTwitsFeed";
+import NewsFeed from "../../components/NewsFeed/NewsFeed";
 import TickerCard from "../../components/TickerCard/TickerCard";
 import MomentumCard from "../../components/MomentumCard/MomentumCard";
 import PriceChart from "../../components/PriceChart/PriceChart";
@@ -260,10 +260,9 @@ export default function Dashboard() {
             </div>
           )}
           
-          {/* Social Feed at the bottom of chart on desktop */}
+          {/* News Feed at the bottom of chart on desktop */}
           <div className={styles.feedSection}>
-             <h3 className={styles.subTitle}>Social Sentiment & Pulse</h3>
-             <StockTwitsFeed symbol={querySymbol} />
+             <NewsFeed symbol={querySymbol} />
           </div>
         </section>
 
