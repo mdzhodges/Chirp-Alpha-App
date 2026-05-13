@@ -10,7 +10,7 @@ from datetime import datetime, time
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from alpaca.trading import Position, MarketOrderRequest, Order
+from alpaca.trading import Position, MarketOrderRequest
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
 
@@ -203,7 +203,7 @@ class AlpacaAlgoTradingImplementation:
 
                 for model_name, model_value in response.model_outputs.items():
                     ticker_outputs[model_name] = float(model_value)
-                
+
                 ticker_outputs.setdefault("balanced", 0.0)
                 ticker_outputs.setdefault("bullish", 0.0)
                 ticker_outputs.setdefault("bearish", 0.0)
@@ -267,7 +267,7 @@ class AlpacaAlgoTradingImplementation:
             )
             return
 
-        dollars_per_ticker: float = cash_to_invest / len(portfolio_tickers)
+        dollars_per_ticker: float = round(cash_to_invest / len(portfolio_tickers), 2)
 
         self._logger.info("Initializing Portfolio Holdings:")
         self._logger.info(f"Portfolio Value: ${portfolio_value:,.2f}")
@@ -444,11 +444,11 @@ class AlpacaAlgoTradingImplementation:
             )
             return
 
-        buy_notional: float = min(
+        buy_notional: float = round(min(
             trade_notional,
             available_room_to_buy,
             cash_available,
-        )
+        ), 2)
 
         if buy_notional <= 0:
             self._logger.warning(
@@ -509,11 +509,11 @@ class AlpacaAlgoTradingImplementation:
             )
             return
 
-        sell_notional: float = min(
+        sell_notional: float = round(min(
             trade_notional,
             available_room_to_sell,
             current_market_value,
-        )
+        ), 2)
 
         quantity_to_sell: float = sell_notional / current_price
 
@@ -713,7 +713,7 @@ class AlpacaAlgoTradingImplementation:
         base_url: str = Constants.BACKEND_BASE_URL.rstrip("/")
         encoded_query: str = urllib.parse.urlencode(query_params)
 
-        result_url:str = f"{base_url}{path}?{encoded_query}"
+        result_url: str = f"{base_url}{path}?{encoded_query}"
 
         self._logger.info(f"Querying URL: {result_url}")
 
@@ -851,7 +851,7 @@ class AlpacaAlgoTradingImplementation:
                 # Check for Finnhub News format
                 headline = message.get("headline")
                 summary = message.get("summary")
-                
+
                 if headline:
                     text = f"{headline}. {summary}".strip()
                 else:
