@@ -465,7 +465,7 @@ class AlpacaAlgoTradingImplementation:
             time_in_force=TimeInForce.DAY,
         )
 
-        # trading_client.submit_order(order_data=market_order_request)
+        trading_client.submit_order(order_data=market_order_request)
 
         self._logger.info(
             f"BUY {ticker_symbol_str}: ${buy_notional:,.2f}, "
@@ -532,7 +532,7 @@ class AlpacaAlgoTradingImplementation:
             time_in_force=TimeInForce.DAY,
         )
 
-        # trading_client.submit_order(order_data=market_order_request)
+        trading_client.submit_order(order_data=market_order_request)
 
         self._logger.info(
             f"SELL {ticker_symbol_str}: {quantity_to_sell:.6f} share(s), "
