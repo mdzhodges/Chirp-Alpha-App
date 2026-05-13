@@ -162,7 +162,7 @@ public class YahooFinanceTickerService {
             }
         }
 
-        BigDecimal current = singlePred != null ? BigDecimal.valueOf(singlePred.momentum()) : (preds.isEmpty() ? BigDecimal.ZERO : BigDecimal.valueOf(preds.get(0)));
+        BigDecimal current = singlePred != null ? BigDecimal.valueOf(singlePred.momentum()) : (preds.size() > 1 ? BigDecimal.valueOf(preds.get(1)) : BigDecimal.ZERO);
         List<String> signals = new ArrayList<>();
         if (singlePred != null) {
             // Create a mutable copy of the list from gRPC
