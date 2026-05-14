@@ -38,6 +38,8 @@ public class AlpacaService {
         this.restTemplate = new RestTemplate();
     }
 
+    
+
     public AlpacaDashboardResponse getDashboardData() {
         return new AlpacaDashboardResponse(
             fetchAccountData("bullish", bullishKey, bullishSecret),
